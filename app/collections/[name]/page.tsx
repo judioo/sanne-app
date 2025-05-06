@@ -1,7 +1,7 @@
 'use client'
 
 import { useParams } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { trpc } from '../../../utils/trpc';
 import Image from 'next/image';
 import Link from 'next/link';
