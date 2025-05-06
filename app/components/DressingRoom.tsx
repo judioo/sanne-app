@@ -198,8 +198,12 @@ export default function DressingRoom({ product, onClose }: DressingRoomProps) {
         
         // Auto close after a few seconds
         setTimeout(() => {
+          // Close both the dressing room and product card by navigating back to the main page
           onClose();
-        }, 4000);
+          
+          // Go back to main page after showing the message
+          window.history.back();
+        }, 3000);
       }, 1000);
     }, 500);
   };
@@ -257,12 +261,12 @@ export default function DressingRoom({ product, onClose }: DressingRoomProps) {
                 {showMessage && (
                   <div className="absolute inset-0 flex items-center justify-center p-8 animate-fade-in">
                     <div className="bg-white rounded-xl p-6 shadow-lg max-w-xs text-center">
-                      <h3 className="font-bold text-lg mb-2">Processing Your Image</h3>
+                      <h3 className="font-bold text-lg mb-2">Request Received!</h3>
                       <p className="text-gray-700">
-                        Your stylized image is being prepared and will be ready shortly.
+                        We're processing your try-on request for {product.name}.
                       </p>
                       <p className="text-gray-600 text-sm mt-3">
-                        Feel free to continue browsing the collection.
+                        Check the garment icon to see your items when they're ready.
                       </p>
                     </div>
                   </div>
