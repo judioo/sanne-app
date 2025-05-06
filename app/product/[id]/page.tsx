@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { trpc } from '../../../utils/trpc';
-import { ChevronLeftIcon, ChevronRightIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { ChevronLeftIcon, ChevronRightIcon, XMarkIcon, ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 
 export default function ProductPage() {
@@ -14,6 +14,10 @@ export default function ProductPage() {
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [isVisible, setIsVisible] = useState(false);
   const [activeTab, setActiveTab] = useState('details');
+  const [isCardExpanded, setIsCardExpanded] = useState(false);
+  const infoCardRef = useRef<HTMLDivElement>(null);
+  const startYRef = useRef<number | null>(null);
+  const cardHeightRef = useRef<number | null>(null);
 
   const { data: product, isLoading } = trpc.products.getById.useQuery(
     { id: productId },
@@ -54,6 +58,36 @@ export default function ProductPage() {
     }, 300);
   };
 
+  // Touch handling for draggable info card
+  const handleTouchStart = (e: React.TouchEvent) => {
+    startYRef.current = e.touches[0].clientY;
+    if (infoCardRef.current) {
+      cardHeightRef.current = infoCardRef.current.offsetHeight;
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (startYRef.current === null || cardHeightRef.current === null) return;
+    const currentY = e.touches[0].clientY;
+    const diff = startYRef.current - currentY;
+    
+    // Expand card if dragged up, collapse if dragged down
+    if (diff > 50 && !isCardExpanded) {
+      setIsCardExpanded(true);
+    } else if (diff < -50 && isCardExpanded) {
+      setIsCardExpanded(false);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    startYRef.current = null;
+    cardHeightRef.current = null;
+  };
+
+  const toggleCardExpansion = () => {
+    setIsCardExpanded(!isCardExpanded);
+  };
+
   if (isLoading) {
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
@@ -83,7 +117,7 @@ export default function ProductPage() {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end justify-center">
       <div 
-        className={`bg-white w-full h-[90vh] rounded-t-2xl transform transition-all duration-300 ease-out overflow-hidden flex flex-col ${
+        className={`bg-white w-full rounded-t-2xl transform transition-all duration-300 ease-out overflow-hidden flex flex-col ${
           isVisible ? 'translate-y-0' : 'translate-y-full'
         }`}
       >
@@ -97,8 +131,8 @@ export default function ProductPage() {
           </button>
         </div>
 
-        {/* Image carousel - fixed height */}
-        <div className="relative h-[40vh] bg-gray-100 flex-shrink-0">
+        {/* Image carousel - increased height from 40vh to 60vh */}
+        <div className="relative h-[60vh] bg-gray-100 flex-shrink-0">
           {product.images && product.images.length > 0 && (
             <div className="relative h-full">
               {product.images.map((image, index) => (
@@ -151,112 +185,144 @@ export default function ProductPage() {
           )}
         </div>
 
-        {/* Product details - scrollable section */}
-        <div className="p-6 overflow-y-auto flex-grow">
-          <div className="mb-4">
-            <h1 className="text-2xl font-bold mb-2">{product.name}</h1>
-            <p className="text-xl font-semibold mb-4">{product.price}د.إ</p>
+        {/* Draggable info card */}
+        <div 
+          ref={infoCardRef}
+          className={`bg-white rounded-t-xl shadow-lg transform transition-all duration-300 ease-in-out`}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+        >
+          {/* Drag handle and minimized view */}
+          <div className="sticky top-0 bg-white px-6 pt-4 pb-3 border-b">
+            <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-4"></div>
+            
+            <div className="flex justify-between items-center">
+              <h1 className="text-xl font-bold truncate">{product.name}</h1>
+              <p className="text-xl font-semibold">{product.price}د.إ</p>
+            </div>
+            
+            {/* Toggle button */}
+            <button 
+              onClick={toggleCardExpansion}
+              className="absolute top-2 right-3 p-1.5 rounded-full bg-gray-100"
+            >
+              {isCardExpanded ? 
+                <ChevronDownIcon className="h-4 w-4" /> : 
+                <ChevronUpIcon className="h-4 w-4" />
+              }
+            </button>
           </div>
           
-          {/* Add to cart and wishlist buttons - fixed position */}
-          <div className="mb-6 sticky top-0 bg-white pt-2 pb-4 z-10">
-            <button className="w-full py-3 bg-black text-white rounded-md font-medium mb-3">
+          {/* Add to cart button - always visible */}
+          <div className="px-6 pt-3 pb-4 bg-white">
+            <button className="w-full py-3 bg-black text-white rounded-md font-medium">
               Add to Cart
             </button>
-            
-            <button className="w-full py-3 border border-black rounded-md font-medium mb-4">
-              Add to Wishlist
-            </button>
           </div>
           
-          {/* Tabs navigation - sticky */}
-          <div className="flex border-b mb-4 sticky top-[140px] bg-white z-10">
-            <button 
-              onClick={() => setActiveTab('details')}
-              className={`pb-2 px-4 ${activeTab === 'details' 
-                ? 'border-b-2 border-black font-medium' 
-                : 'text-gray-500'}`}
-            >
-              Details
-            </button>
-            <button 
-              onClick={() => setActiveTab('collections')}
-              className={`pb-2 px-4 ${activeTab === 'collections' 
-                ? 'border-b-2 border-black font-medium' 
-                : 'text-gray-500'}`}
-            >
-              Collections
-            </button>
-            <button 
-              onClick={() => setActiveTab('category')}
-              className={`pb-2 px-4 ${activeTab === 'category' 
-                ? 'border-b-2 border-black font-medium' 
-                : 'text-gray-500'}`}
-            >
-              Category
-            </button>
+          {/* Expandable content */}
+          <div 
+            className={`overflow-hidden transition-all duration-300 ease-in-out ${
+              isCardExpanded ? 'max-h-[60vh] opacity-100' : 'max-h-0 opacity-0'
+            }`}
+          >
+            <div className="p-6 pt-0">
+              {/* Add to wishlist button */}
+              <button className="w-full py-3 border border-black rounded-md font-medium mb-6">
+                Add to Wishlist
+              </button>
+              
+              {/* Tabs navigation */}
+              <div className="flex border-b mb-4 sticky top-0 bg-white z-10">
+                <button 
+                  onClick={() => setActiveTab('details')}
+                  className={`pb-2 px-4 ${activeTab === 'details' 
+                    ? 'border-b-2 border-black font-medium' 
+                    : 'text-gray-500'}`}
+                >
+                  Details
+                </button>
+                <button 
+                  onClick={() => setActiveTab('collections')}
+                  className={`pb-2 px-4 ${activeTab === 'collections' 
+                    ? 'border-b-2 border-black font-medium' 
+                    : 'text-gray-500'}`}
+                >
+                  Collections
+                </button>
+                <button 
+                  onClick={() => setActiveTab('category')}
+                  className={`pb-2 px-4 ${activeTab === 'category' 
+                    ? 'border-b-2 border-black font-medium' 
+                    : 'text-gray-500'}`}
+                >
+                  Category
+                </button>
+              </div>
+              
+              {/* Tab content - scrollable */}
+              <div className="tab-content">
+                {activeTab === 'details' && (
+                  <div>
+                    <p className="mb-6">
+                      A beautiful {product.name.toLowerCase()} designed for comfort and style. 
+                      Perfect for any occasion.
+                    </p>
+                    <p className="mb-6">
+                      This product features premium materials and expert craftsmanship, ensuring
+                      both durability and a luxurious feel. The attention to detail is evident in
+                      every stitch.
+                    </p>
+                    <p className="mb-6">
+                      Care instructions: Hand wash or dry clean only. Do not bleach. Iron on low heat if needed.
+                    </p>
+                    <p className="mb-6">
+                      Each item is made with care and passion, reflecting our commitment to quality and sustainability.
+                    </p>
+                  </div>
+                )}
+                
+                {activeTab === 'collections' && (
+                  <div>
+                    <h2 className="text-lg font-medium mb-2">Collections</h2>
+                    <div className="flex flex-wrap gap-2 mb-6">
+                      {product.collections.map((collection, index) => (
+                        <Link 
+                          key={index} 
+                          href={`/collections/${encodeURIComponent(collection)}`}
+                          className="inline-block px-3 py-1 bg-gray-100 rounded-full text-sm"
+                        >
+                          {collection}
+                        </Link>
+                      ))}
+                    </div>
+                    <p className="mb-6">
+                      This product belongs to our curated collections, each representing a unique aesthetic 
+                      and design philosophy. Explore similar items by clicking on the collection tags above.
+                    </p>
+                  </div>
+                )}
+                
+                {activeTab === 'category' && (
+                  <div>
+                    <h2 className="text-lg font-medium mb-2">Category</h2>
+                    <span className="inline-block px-3 py-1 bg-gray-100 rounded-full text-sm mb-6">
+                      {product.category === 'men' ? 'Men\'s' : 'Women\'s'}
+                    </span>
+                    <p className="mb-6">
+                      Our {product.category === 'men' ? 'men\'s' : 'women\'s'} collection is designed with 
+                      modern sensibilities while remaining timeless. Each piece is carefully selected to ensure
+                      versatility and style.
+                    </p>
+                  </div>
+                )}
+              </div>
+              
+              {/* Add some bottom space to ensure scrollability is apparent */}
+              <div className="h-12"></div>
+            </div>
           </div>
-          
-          {/* Tab content - scrollable */}
-          <div className="tab-content">
-            {activeTab === 'details' && (
-              <div>
-                <p className="mb-6">
-                  A beautiful {product.name.toLowerCase()} designed for comfort and style. 
-                  Perfect for any occasion.
-                </p>
-                <p className="mb-6">
-                  This product features premium materials and expert craftsmanship, ensuring
-                  both durability and a luxurious feel. The attention to detail is evident in
-                  every stitch.
-                </p>
-                <p className="mb-6">
-                  Care instructions: Hand wash or dry clean only. Do not bleach. Iron on low heat if needed.
-                </p>
-                <p className="mb-6">
-                  Each item is made with care and passion, reflecting our commitment to quality and sustainability.
-                </p>
-              </div>
-            )}
-            
-            {activeTab === 'collections' && (
-              <div>
-                <h2 className="text-lg font-medium mb-2">Collections</h2>
-                <div className="flex flex-wrap gap-2 mb-6">
-                  {product.collections.map((collection, index) => (
-                    <Link 
-                      key={index} 
-                      href={`/collections/${encodeURIComponent(collection)}`}
-                      className="inline-block px-3 py-1 bg-gray-100 rounded-full text-sm"
-                    >
-                      {collection}
-                    </Link>
-                  ))}
-                </div>
-                <p className="mb-6">
-                  This product belongs to our curated collections, each representing a unique aesthetic 
-                  and design philosophy. Explore similar items by clicking on the collection tags above.
-                </p>
-              </div>
-            )}
-            
-            {activeTab === 'category' && (
-              <div>
-                <h2 className="text-lg font-medium mb-2">Category</h2>
-                <span className="inline-block px-3 py-1 bg-gray-100 rounded-full text-sm mb-6">
-                  {product.category === 'men' ? 'Men\'s' : 'Women\'s'}
-                </span>
-                <p className="mb-6">
-                  Our {product.category === 'men' ? 'men\'s' : 'women\'s'} collection is designed with 
-                  modern sensibilities while remaining timeless. Each piece is carefully selected to ensure
-                  versatility and style.
-                </p>
-              </div>
-            )}
-          </div>
-          
-          {/* Add some bottom space to ensure scrollability is apparent */}
-          <div className="h-12"></div>
         </div>
       </div>
     </div>
