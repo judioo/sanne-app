@@ -85,11 +85,33 @@ export default function CollectionPage() {
         <div className="grid grid-cols-2 gap-4">
           {products.map((product) => (
             <div key={product.id} className="mb-6">
-              <div className="bg-gray-100 aspect-[3/4] mb-2 relative">
-                {/* Placeholder for product image */}
-                <div className="absolute inset-0 flex items-center justify-center text-gray-400">
-                  {product.name}
-                </div>
+              <div className="bg-gray-100 aspect-[3/4] mb-2 relative overflow-hidden">
+                {/* Product image with hover effect for second image */}
+                {product.images && product.images.length > 0 && (
+                  <>
+                    <Image 
+                      src={product.images[0]} 
+                      alt={product.name}
+                      fill
+                      className="object-cover transition-opacity duration-300 ease-in-out hover:opacity-0"
+                      sizes="(max-width: 768px) 50vw, 33vw"
+                    />
+                    {product.images.length > 1 && (
+                      <Image 
+                        src={product.images[1]} 
+                        alt={`${product.name} alternate view`}
+                        fill
+                        className="object-cover opacity-0 transition-opacity duration-300 ease-in-out hover:opacity-100"
+                        sizes="(max-width: 768px) 50vw, 33vw"
+                      />
+                    )}
+                  </>
+                )}
+                {(!product.images || product.images.length === 0) && (
+                  <div className="absolute inset-0 flex items-center justify-center text-gray-400">
+                    {product.name}
+                  </div>
+                )}
               </div>
               <h3 className="text-sm font-medium">{product.name}</h3>
               <p className="text-sm mt-1 font-bold">{product.price}د.إ</p>
