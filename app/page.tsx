@@ -1,30 +1,178 @@
 'use client'
 
 import Image from "next/image";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { trpc } from "../utils/trpc";
 import Link from "next/link";
+import { type inferRouterOutputs } from "@trpc/server";
+import { type AppRouter } from "../server/routers/index";
+import { useRouter, useSearchParams } from "next/navigation";
+
+// Define type for product data from tRPC
+type RouterOutput = inferRouterOutputs<AppRouter>;
+type ProductType = {
+  id: number;
+  name: string;
+  price: string;
+  numericPrice: number;
+  images: string[];
+  collections: string[];
+  category: "men" | "women";
+  productUrl?: string;
+};
+
+// Store listings state in a module-level variable
+// This will persist between page navigations
+let cachedProducts: ProductType[] = [];
+let cachedCategory: 'all' | 'men' | 'women' = 'all';
+let cachedSortBy: 'price_asc' | 'price_desc' | undefined = undefined;
+let cachedSearchTerm: string = "";
+let cachedPage: number = 1;
 
 export default function Home() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [isMobile, setIsMobile] = useState(true);
-  const [category, setCategory] = useState<'all' | 'men' | 'women'>('all');
-  const [sortBy, setSortBy] = useState<'price_asc' | 'price_desc' | undefined>(undefined);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [category, setCategory] = useState<'all' | 'men' | 'women'>(cachedCategory);
+  const [sortBy, setSortBy] = useState<'price_asc' | 'price_desc' | undefined>(cachedSortBy);
+  const [searchTerm, setSearchTerm] = useState(cachedSearchTerm);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(cachedPage);
+  const [allProducts, setAllProducts] = useState<ProductType[]>(cachedProducts);
+  const [hasMore, setHasMore] = useState(true);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const isInitialLoad = useRef(cachedProducts.length === 0);
+  
+  // Memoize query input to prevent unnecessary refetches
+  const queryInput = useMemo(() => ({
+    category,
+    sortBy,
+    search: searchTerm,
+    collection: "New Arrivals",
+    page: currentPage,
+    limit: 12,
+  }), [category, sortBy, searchTerm, currentPage]);
   
   // Fetch all collections for the side menu
   const { data: collections = [] } = trpc.products.getCollections.useQuery();
 
-  // Fetch products using tRPC
-  const { data: products = [], isLoading } = trpc.products.getAll.useQuery({
-    category,
-    sortBy,
-    search: searchTerm,
-    collection: "New Arrivals", // Default to showing New Arrivals on the home page
+  // Fetch products using tRPC with pagination
+  const { data: productData, isLoading, isFetching } = trpc.products.getAll.useQuery(queryInput, {
+    // Only run the query if we need to fetch data (initial load or filter change)
+    enabled: isInitialLoad.current || 
+             category !== cachedCategory || 
+             sortBy !== cachedSortBy || 
+             searchTerm !== cachedSearchTerm ||
+             currentPage > cachedPage
   });
+  
+  // Handle product data changes efficiently
+  useEffect(() => {
+    if (productData) {
+      let newProducts: ProductType[];
+      
+      if (currentPage === 1 || 
+          category !== cachedCategory || 
+          sortBy !== cachedSortBy || 
+          searchTerm !== cachedSearchTerm) {
+        // Replace products on first page or when filters change
+        newProducts = productData.products;
+      } else {
+        // Append products for subsequent pages
+        newProducts = [...allProducts, ...productData.products];
+      }
+      
+      // Update cached values
+      cachedProducts = newProducts;
+      cachedCategory = category;
+      cachedSortBy = sortBy;
+      cachedSearchTerm = searchTerm;
+      cachedPage = currentPage;
+      isInitialLoad.current = false;
+      
+      // Update state
+      setAllProducts(newProducts);
+      setHasMore(productData.pagination.hasMore);
+    }
+  }, [productData, currentPage, category, sortBy, searchTerm, allProducts]);
+  
+  // Reset pagination when filters change
+  useEffect(() => {
+    if ((category !== cachedCategory) || 
+        (sortBy !== cachedSortBy) || 
+        (searchTerm !== cachedSearchTerm)) {
+      setCurrentPage(1);
+      // Don't clear products here, wait for the new data
+    }
+  }, [category, sortBy, searchTerm]);
+
+  // Update URL with filters for better back button behavior
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (category !== 'all') params.set('category', category);
+    if (sortBy) params.set('sortBy', sortBy);
+    if (searchTerm) params.set('search', searchTerm);
+    if (currentPage > 1) params.set('page', currentPage.toString());
+    
+    const url = params.toString() ? `/?${params.toString()}` : '/';
+    window.history.replaceState({}, '', url);
+  }, [category, sortBy, searchTerm, currentPage]);
+
+  // Restore filters from URL on initial load
+  useEffect(() => {
+    if (isInitialLoad.current) {
+      const categoryParam = searchParams.get('category') as 'all' | 'men' | 'women' | null;
+      const sortByParam = searchParams.get('sortBy') as 'price_asc' | 'price_desc' | null;
+      const searchParam = searchParams.get('search');
+      const pageParam = searchParams.get('page');
+      
+      if (categoryParam && ['all', 'men', 'women'].includes(categoryParam)) {
+        setCategory(categoryParam);
+        cachedCategory = categoryParam;
+      }
+      
+      if (sortByParam && ['price_asc', 'price_desc'].includes(sortByParam)) {
+        setSortBy(sortByParam);
+        cachedSortBy = sortByParam;
+      }
+      
+      if (searchParam) {
+        setSearchTerm(searchParam);
+        cachedSearchTerm = searchParam;
+      }
+      
+      if (pageParam && !isNaN(Number(pageParam))) {
+        const page = Number(pageParam);
+        setCurrentPage(page);
+        cachedPage = page;
+      }
+    }
+  }, [searchParams, isInitialLoad]);
+
+  // Intersection Observer for infinite scrolling with better performance
+  const lastProductElementRef = useCallback((node: HTMLDivElement | null) => {
+    if (isLoading || isFetching) return;
+    
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+    }
+    
+    observerRef.current = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && hasMore) {
+        setCurrentPage(prevPage => prevPage + 1);
+      }
+    }, { 
+      threshold: 0.2, // Lower threshold for earlier loading
+      rootMargin: '100px' // Start loading before item is fully visible
+    });
+    
+    if (node) {
+      observerRef.current.observe(node);
+    }
+  }, [isLoading, isFetching, hasMore]);
 
   useEffect(() => {
     // Check if the device is mobile
@@ -101,8 +249,8 @@ export default function Home() {
             className="text-gray-700"
             onClick={() => setIsMenuOpen(!isMenuOpen)}
           >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
           
@@ -113,176 +261,154 @@ export default function Home() {
               width={120}
               height={40}
               priority
-              className="mx-auto"
             />
           </div>
           
-          <div className="flex gap-2">
-            <button 
+          <div className="flex space-x-4">
+            <button
               className="text-gray-700"
               onClick={() => setIsSearchOpen(!isSearchOpen)}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
-                <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </button>
-            <button className="text-gray-700">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6a3.75 3.75 0 1 0-7.5 0v4.5m11.356-1.993 1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 0 1-1.12-1.243l1.264-12A1.125 1.125 0 0 1 5.513 7.5h12.974c.576 0 1.059.435 1.119 1.007ZM8.625 10.5a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm7.5 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
+            <Link href="/cart" className="text-gray-700">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
               </svg>
-            </button>
+            </Link>
           </div>
         </div>
-
+        
         {/* Search Bar */}
-        {isSearchOpen && (
-          <div className="px-4 pb-4 animate-fade-in">
-            <div className="relative">
-              <input
-                ref={searchInputRef}
-                type="text"
-                placeholder="Search products..."
-                className="w-full p-2 border rounded-md pl-10"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+        <div 
+          className={`bg-white p-4 transition-all duration-300 ease-in-out overflow-hidden ${
+            isSearchOpen ? 'max-h-20 opacity-100' : 'max-h-0 opacity-0'
+          }`}
+        >
+          <div className="relative">
+            <input
+              ref={searchInputRef}
+              type="text"
+              placeholder="Search products..."
+              className="w-full py-2 pl-10 pr-4 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-200"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-5 w-5 absolute left-3 top-3 text-gray-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
               />
-              <svg 
-                xmlns="http://www.w3.org/2000/svg" 
-                fill="none" 
-                viewBox="0 0 24 24" 
-                strokeWidth={1.5} 
-                stroke="currentColor" 
-                className="w-5 h-5 absolute left-2 top-2.5 text-gray-400"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-              </svg>
-              {searchTerm && (
-                <button 
-                  className="absolute right-2 top-2.5 text-gray-400"
-                  onClick={() => setSearchTerm("")}
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-      </header>
-
-      {/* Side Menu */}
-      {isMenuOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50">
-          <div 
-            id="main-menu"
-            className="absolute top-0 left-0 h-full w-3/4 max-w-xs bg-white shadow-lg transform transition-transform animate-slide-in"
-          >
-            <div className="p-5">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-bold">Menu</h2>
-                <button 
-                  className="text-gray-500"
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-              
-              <nav className="space-y-4">
-                <Link href="/" className="flex items-center py-2 px-4 hover:bg-gray-100 rounded-md">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 mr-3">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
-                  </svg>
-                  Home
-                </Link>
-                <Link href="#" className="flex items-center py-2 px-4 hover:bg-gray-100 rounded-md">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 mr-3">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z" />
-                  </svg>
-                  Wishlist
-                </Link>
-                <Link href="#" className="flex items-center py-2 px-4 hover:bg-gray-100 rounded-md">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 mr-3">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6a3.75 3.75 0 1 0-7.5 0v4.5m11.356-1.993 1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 0 1-1.12-1.243l1.264-12A1.125 1.125 0 0 1 5.513 7.5h12.974c.576 0 1.059.435 1.119 1.007ZM8.625 10.5a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm7.5 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
-                  </svg>
-                  Cart
-                </Link>
-                <Link href="#" className="flex items-center py-2 px-4 hover:bg-gray-100 rounded-md">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 mr-3">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
-                  </svg>
-                  Profile
-                </Link>
-              </nav>
-              
-              <div className="mt-8 pt-6 border-t">
-                <h3 className="text-sm font-medium text-gray-500 mb-4">Collections</h3>
-                <div className="space-y-2">
-                  {collections.map((collection) => (
-                    <Link 
-                      key={collection} 
-                      href={`/collections/${encodeURIComponent(collection)}`}
-                      className="block py-1 hover:text-blue-600"
-                    >
-                      {collection}
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            </div>
+            </svg>
           </div>
         </div>
-      )}
-
-      {/* Category Tabs */}
-      <div className="flex justify-center p-4 border-b">
-        <div className="flex space-x-6">
-          <button 
-            className={`pb-2 ${category === 'all' ? 'font-bold border-b-2 border-black' : 'text-gray-500'}`}
+        
+        {/* Category Tabs */}
+        <div className="flex justify-around border-b">
+          <button
+            className={`flex-1 py-2 px-4 ${
+              category === 'all' ? 'border-b-2 border-black' : ''
+            }`}
             onClick={() => setCategory('all')}
           >
             All
           </button>
-          <button 
-            className={`pb-2 ${category === 'women' ? 'font-bold border-b-2 border-black' : 'text-gray-500'}`}
+          <button
+            className={`flex-1 py-2 px-4 ${
+              category === 'women' ? 'border-b-2 border-black' : ''
+            }`}
             onClick={() => setCategory('women')}
           >
             Women
           </button>
-          <button 
-            className={`pb-2 ${category === 'men' ? 'font-bold border-b-2 border-black' : 'text-gray-500'}`}
+          <button
+            className={`flex-1 py-2 px-4 ${
+              category === 'men' ? 'border-b-2 border-black' : ''
+            }`}
             onClick={() => setCategory('men')}
           >
             Men
           </button>
+          <button
+            className={`flex-1 py-2 px-4 flex items-center justify-center ${
+              isFilterOpen ? 'border-b-2 border-black' : ''
+            }`}
+            onClick={() => setIsFilterOpen(!isFilterOpen)}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-5 w-5 mr-1"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
+              />
+            </svg>
+            Filter
+          </button>
+        </div>
+      </header>
+
+      {/* Side Menu */}
+      <div
+        id="main-menu"
+        className={`fixed inset-y-0 left-0 z-50 bg-white w-64 transform transition-transform duration-300 ease-in-out shadow-lg overflow-y-auto ${
+          isMenuOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        <div className="p-4 border-b">
+          <div className="flex justify-between items-center">
+            <h2 className="text-xl font-bold">Menu</h2>
+            <button
+              className="text-gray-500"
+              onClick={() => setIsMenuOpen(false)}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div className="p-4">
+          <h3 className="font-medium mb-2">Collections</h3>
+          <ul className="space-y-2">
+            {collections.map((collection, index) => (
+              <li key={index}>
+                <Link 
+                  href={`/collections/${encodeURIComponent(collection)}`} 
+                  className="block py-1"
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  {collection}
+                </Link>
+              </li>
+            ))}
+          </ul>
         </div>
       </div>
 
-      {/* New Arrivals Section */}
+      {/* Main Content */}
       <main className="flex-1 p-4">
-        <h2 className="text-2xl font-bold text-center mb-6">New Arrivals</h2>
-        
-        {/* Filter & Sort Button */}
-        <div className="flex justify-end mb-4">
-          <button 
-            className="flex items-center text-sm"
-            onClick={() => setIsFilterOpen(!isFilterOpen)}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4 mr-1">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75" />
-            </svg>
-            Filter & Sort
-          </button>
-        </div>
-
-        {/* Filter & Sort Panel */}
+        {/* Filter Options */}
         {isFilterOpen && (
-          <div className="mb-6 p-4 bg-gray-50 rounded-md animate-fade-in">
-            <h3 className="font-medium mb-3">Sort by Price</h3>
-            <div className="flex flex-col gap-2">
+          <div className="bg-white p-4 mb-4 rounded-md shadow">
+            <h3 className="font-medium mb-2">Sort By</h3>
+            <div className="space-y-2">
               <label className="flex items-center">
                 <input
                   type="radio"
@@ -315,60 +441,101 @@ export default function Home() {
           </div>
         )}
         
-        {/* Loading State */}
-        {isLoading && (
+        {/* Initial Loading State */}
+        {isLoading && allProducts.length === 0 && (
           <div className="flex justify-center items-center py-10">
             <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-gray-900"></div>
           </div>
         )}
         
-        {/* Product Grid */}
-        {!isLoading && (
+        {/* Product Grid - with performance optimizations */}
+        {allProducts.length > 0 && (
           <div className="grid grid-cols-2 gap-4">
-            {products.map((product) => (
-              <Link key={product.id} href={`/product/${product.id}`} className="block mb-6">
-                <div className="bg-gray-100 aspect-[3/4] mb-2 relative overflow-hidden">
-                  {/* Product image with hover effect for second image */}
-                  {product.images && product.images.length > 0 && (
-                    <>
-                      <Image 
-                        src={product.images[0]} 
-                        alt={product.name}
-                        fill
-                        className="object-cover transition-opacity duration-300 ease-in-out hover:opacity-0"
-                        sizes="(max-width: 768px) 50vw, 33vw"
-                      />
-                      {product.images.length > 1 && (
-                        <Image 
-                          src={product.images[1]} 
-                          alt={`${product.name} alternate view`}
-                          fill
-                          className="object-cover opacity-0 transition-opacity duration-300 ease-in-out hover:opacity-100"
-                          sizes="(max-width: 768px) 50vw, 33vw"
-                        />
+            {allProducts.map((product, index) => {
+              // If this is the last product and there's more to load, attach the ref
+              const isLastProduct = index === allProducts.length - 1 && hasMore;
+              
+              return (
+                <div key={`${product.id}-${index}`} ref={isLastProduct ? lastProductElementRef : null}>
+                  <Link 
+                    href={`/product/${product.id}`} 
+                    className="block mb-6"
+                  >
+                    <div className="bg-gray-100 aspect-[3/4] mb-2 relative overflow-hidden">
+                      {/* Product image with hover effect for second image */}
+                      {product.images && product.images.length > 0 && (
+                        <>
+                          <Image 
+                            src={product.images[0]} 
+                            alt={product.name}
+                            fill
+                            className="object-cover transition-opacity duration-300 ease-in-out hover:opacity-0"
+                            sizes="(max-width: 768px) 50vw, 33vw"
+                            priority={index < 4} // Only prioritize first 4 images
+                            loading={index >= 4 ? "lazy" : undefined} // Lazy load non-critical images
+                          />
+                          {product.images.length > 1 && (
+                            <Image 
+                              src={product.images[1]} 
+                              alt={`${product.name} alternate view`}
+                              fill
+                              className="object-cover opacity-0 transition-opacity duration-300 ease-in-out hover:opacity-100"
+                              sizes="(max-width: 768px) 50vw, 33vw"
+                              loading="lazy" // Lazy load secondary images
+                            />
+                          )}
+                        </>
                       )}
-                    </>
-                  )}
-                  {(!product.images || product.images.length === 0) && (
-                    <div className="absolute inset-0 flex items-center justify-center text-gray-400">
-                      {product.name}
                     </div>
-                  )}
+                    <h3 className="font-medium mb-1 truncate">{product.name}</h3>
+                    <p className="text-gray-700">{product.price}د.إ</p>
+                  </Link>
                 </div>
-                <h3 className="text-sm font-medium">{product.name}</h3>
-                <p className="text-sm mt-1 font-bold">{product.price}د.إ</p>
-              </Link>
-            ))}
+              );
+            })}
           </div>
         )}
-
+        
+        {/* Loading More Indicator */}
+        {(isFetching && allProducts.length > 0) && (
+          <div className="flex justify-center items-center py-6">
+            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-gray-900"></div>
+          </div>
+        )}
+        
         {/* No Results */}
-        {!isLoading && products.length === 0 && (
-          <div className="text-center py-10">
-            <p className="text-gray-500">No products found</p>
+        {!isLoading && allProducts.length === 0 && !isInitialLoad.current && (
+          <div className="py-10 text-center">
+            <p className="text-gray-500">No products found.</p>
+            <button 
+              onClick={() => {
+                setSearchTerm('');
+                setCategory('all');
+                setSortBy(undefined);
+              }}
+              className="mt-4 px-4 py-2 bg-black text-white rounded-md"
+            >
+              Clear All Filters
+            </button>
           </div>
         )}
       </main>
+
+      {/* Footer */}
+      <footer className="bg-gray-100 py-6 px-4">
+        <div className="mb-4">
+          <Image
+            src="/sanne-transparent.png"
+            alt="Sanne Logo"
+            width={100}
+            height={40}
+          />
+        </div>
+        <div className="text-sm text-gray-600">
+          <p className="mb-2"> 2023 Sanne. All rights reserved.</p>
+          <p>Luxury fashion at your fingertips.</p>
+        </div>
+      </footer>
     </div>
   );
 }

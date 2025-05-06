@@ -3,7 +3,7 @@ import { router, publicProcedure } from '../trpc';
 import { products, getAllCollections } from '../product-data';
 
 export const productsRouter = router({
-  // Get all products with optional filtering
+  // Get all products with optional filtering and pagination
   getAll: publicProcedure
     .input(
       z.object({
@@ -11,6 +11,8 @@ export const productsRouter = router({
         sortBy: z.enum(['price_asc', 'price_desc']).optional(),
         search: z.string().optional(),
         collection: z.string().optional(),
+        page: z.number().optional().default(1),
+        limit: z.number().optional().default(12),
       })
     )
     .query(({ input }) => {
@@ -46,7 +48,28 @@ export const productsRouter = router({
         filteredProducts.sort((a, b) => b.numericPrice - a.numericPrice);
       }
 
-      return filteredProducts;
+      // Calculate pagination values
+      const page = input.page || 1;
+      const limit = input.limit || 12;
+      const startIndex = (page - 1) * limit;
+      const endIndex = page * limit;
+      
+      // Calculate total pages
+      const totalProducts = filteredProducts.length;
+      const totalPages = Math.ceil(totalProducts / limit);
+      
+      // Get paginated products
+      const paginatedProducts = filteredProducts.slice(startIndex, endIndex);
+      
+      return {
+        products: paginatedProducts,
+        pagination: {
+          currentPage: page,
+          totalPages: totalPages,
+          totalProducts: totalProducts,
+          hasMore: page < totalPages,
+        }
+      };
     }),
 
   // Get all available collections

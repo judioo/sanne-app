@@ -1,6 +1,6 @@
 import '@/styles/globals.css'
 import { Geist, Geist_Mono } from "next/font/google"
-import { PostHogProvider } from '@/app/providers'
+import Providers from '@/app/providers'
 import { TRPCProvider } from './trpc-provider'
 import { Metadata } from 'next'
 
@@ -23,9 +23,9 @@ export const metadata: Metadata = {
 function ClientOnlyProvider({ children }: { children: React.ReactNode }) {
   return (
     <TRPCProvider>
-      <PostHogProvider>
+      <Providers>
         {children}
-      </PostHogProvider>
+      </Providers>
     </TRPCProvider>
   )
 }
