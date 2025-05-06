@@ -156,6 +156,16 @@ export default function DressingRoom({ product, onClose }: DressingRoomProps) {
           </button>
         </div>
         
+        {/* Dressing room button - Moved above Selected Item section */}
+        <button 
+          onClick={goToDressingRoom}
+          className="py-4 bg-black text-white rounded-md font-medium relative overflow-hidden group mb-6"
+        >
+          <span className="relative z-10">To The Dressing Room</span>
+          <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-indigo-600 
+                        opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+        </button>
+        
         {/* Product images */}
         <h2 className="font-medium mb-3">Selected Item</h2>
         <div className="grid grid-cols-2 gap-4 mb-6">
@@ -170,16 +180,6 @@ export default function DressingRoom({ product, onClose }: DressingRoomProps) {
             </div>
           ))}
         </div>
-        
-        {/* Dressing room button */}
-        <button 
-          onClick={goToDressingRoom}
-          className="mt-auto py-4 bg-black text-white rounded-md font-medium relative overflow-hidden group"
-        >
-          <span className="relative z-10">To The Dressing Room</span>
-          <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-indigo-600 
-                        opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-        </button>
       </div>
     </div>
   );
