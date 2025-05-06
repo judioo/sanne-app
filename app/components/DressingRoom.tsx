@@ -9,6 +9,15 @@ type DressingRoomProps = {
   onClose: () => void;
 }
 
+// Define try-on item type
+type TryOnItem = {
+  productId: number;
+  productName: string;
+  timestamp: string;
+  status: 'pending' | 'ready';
+  imageUrl?: string;
+};
+
 export default function DressingRoom({ product, onClose }: DressingRoomProps) {
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -129,7 +138,48 @@ export default function DressingRoom({ product, onClose }: DressingRoomProps) {
     }
   };
 
-  // Go to dressing room with animation - now with message and storing try-on info
+  // Function to add try-on item to localStorage
+  const addTryOnItem = () => {
+    // Create new try-on item
+    const newTryOnItem: TryOnItem = {
+      productId: product.id,
+      productName: product.name,
+      timestamp: new Date().toISOString(),
+      status: 'pending'
+    };
+    
+    // Get existing try-on items from localStorage
+    let tryOnItems: TryOnItem[] = [];
+    const existingTryOnItems = localStorage.getItem('tryOnItems');
+    
+    if (existingTryOnItems) {
+      try {
+        tryOnItems = JSON.parse(existingTryOnItems);
+        
+        // Filter out old items (older than 24 hours)
+        const now = new Date();
+        tryOnItems = tryOnItems.filter(item => {
+          const timestamp = new Date(item.timestamp);
+          const hoursSinceCreated = (now.getTime() - timestamp.getTime()) / (1000 * 60 * 60);
+          return hoursSinceCreated < 24;
+        });
+        
+        // Remove existing item for the same product if present
+        tryOnItems = tryOnItems.filter(item => item.productId !== product.id);
+      } catch (e) {
+        console.error('Error parsing tryOnItems:', e);
+        tryOnItems = [];
+      }
+    }
+    
+    // Add new item to the array
+    tryOnItems.push(newTryOnItem);
+    
+    // Save updated array back to localStorage
+    localStorage.setItem('tryOnItems', JSON.stringify(tryOnItems));
+  };
+
+  // Go to dressing room with animation - updated to handle multiple try-on items
   const goToDressingRoom = () => {
     // Show curtains in initial open state
     setShowCurtains(true);
@@ -143,13 +193,8 @@ export default function DressingRoom({ product, onClose }: DressingRoomProps) {
       setTimeout(() => {
         setShowMessage(true);
         
-        // Store pending try-on information in local storage
-        const pendingTryOn = {
-          productId: product.id,
-          productName: product.name,
-          timestamp: new Date().toISOString(),
-        };
-        localStorage.setItem('pendingTryOn', JSON.stringify(pendingTryOn));
+        // Add try-on item to localStorage
+        addTryOnItem();
         
         // Auto close after a few seconds
         setTimeout(() => {

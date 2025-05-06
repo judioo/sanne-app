@@ -24,42 +24,54 @@ export default function TryOnList({ onClose }: TryOnListProps) {
 
   // Load try-on items from localStorage
   useEffect(() => {
-    // For this implementation, we'll use the pendingTryOn item and also simulate a "ready" item
-    const pendingTryOn = localStorage.getItem('pendingTryOn');
-    const tryOnItems: TryOnItem[] = [];
+    // Get items from localStorage
+    const storedItems = localStorage.getItem('tryOnItems');
+    let parsedItems: TryOnItem[] = [];
     
-    if (pendingTryOn) {
+    if (storedItems) {
       try {
-        const parsedItem = JSON.parse(pendingTryOn);
-        const timestamp = new Date(parsedItem.timestamp);
+        const items = JSON.parse(storedItems);
         const now = new Date();
-        const hoursSinceCreated = (now.getTime() - timestamp.getTime()) / (1000 * 60 * 60);
         
-        // Only add if less than 24 hours old
-        if (hoursSinceCreated < 24) {
+        // Process each item
+        parsedItems = items.map((item: TryOnItem) => {
+          const timestamp = new Date(item.timestamp);
+          const minutesSinceCreated = (now.getTime() - timestamp.getTime()) / (1000 * 60);
+          
           // If more than 1 minute old, mark as ready (for demo purposes)
           // In a real app, this would be determined by a server response
-          const minutesSinceCreated = hoursSinceCreated * 60;
-          const status = minutesSinceCreated > 1 ? 'ready' : 'pending';
+          if (minutesSinceCreated > 1 && item.status === 'pending') {
+            return {
+              ...item,
+              status: 'ready',
+              // For demo purposes, use a sample image as the "processed" image
+              imageUrl: '/lena-with-clothes.jpeg'
+            };
+          }
           
-          tryOnItems.push({
-            productId: parsedItem.productId,
-            productName: parsedItem.productName,
-            timestamp: parsedItem.timestamp,
-            status,
-            // For demo purposes, use the first product image as the "processed" image
-            imageUrl: status === 'ready' ? '/lena-with-clothes.jpeg' : undefined
-          });
-        } else {
-          // Remove old items
-          localStorage.removeItem('pendingTryOn');
-        }
+          return item;
+        });
+        
+        // Filter out items older than 24 hours
+        parsedItems = parsedItems.filter(item => {
+          const timestamp = new Date(item.timestamp);
+          const hoursSinceCreated = (now.getTime() - timestamp.getTime()) / (1000 * 60 * 60);
+          return hoursSinceCreated < 24;
+        });
+        
+        // Sort items by timestamp (newest first)
+        parsedItems.sort((a, b) => {
+          return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+        });
+        
+        // Save the filtered and updated items back to localStorage
+        localStorage.setItem('tryOnItems', JSON.stringify(parsedItems));
       } catch (e) {
-        console.error('Error parsing pendingTryOn data:', e);
+        console.error('Error parsing tryOnItems:', e);
       }
     }
     
-    setTryOnItems(tryOnItems);
+    setTryOnItems(parsedItems);
   }, []);
 
   // Handle click outside
@@ -83,9 +95,24 @@ export default function TryOnList({ onClose }: TryOnListProps) {
   };
 
   // Clear a try-on item
-  const clearItem = (productId: number) => {
-    localStorage.removeItem('pendingTryOn');
-    setTryOnItems(tryOnItems.filter(item => item.productId !== productId));
+  const clearItem = (e: React.MouseEvent, productId: number) => {
+    e.stopPropagation(); // Prevent navigation when clicking the clear button
+    
+    // Get current items
+    const storedItems = localStorage.getItem('tryOnItems');
+    if (storedItems) {
+      try {
+        const items = JSON.parse(storedItems);
+        // Filter out the item to remove
+        const updatedItems = items.filter((item: TryOnItem) => item.productId !== productId);
+        // Save back to localStorage
+        localStorage.setItem('tryOnItems', JSON.stringify(updatedItems));
+        // Update state
+        setTryOnItems(tryOnItems.filter(item => item.productId !== productId));
+      } catch (e) {
+        console.error('Error removing try-on item:', e);
+      }
+    }
   };
 
   if (tryOnItems.length === 0) {
@@ -119,7 +146,8 @@ export default function TryOnList({ onClose }: TryOnListProps) {
         {tryOnItems.map((item) => (
           <div 
             key={item.productId} 
-            className="p-3 border-b last:border-b-0 hover:bg-gray-50"
+            className="p-3 border-b last:border-b-0 hover:bg-gray-50 cursor-pointer"
+            onClick={() => navigateToProduct(item.productId)}
           >
             <div className="flex items-start mb-2">
               <div className="flex-1">
@@ -134,10 +162,13 @@ export default function TryOnList({ onClose }: TryOnListProps) {
                       Ready
                     </span>
                   )}
+                  <span className="text-xs text-gray-500 ml-2">
+                    {new Date(item.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                  </span>
                 </div>
               </div>
               <button 
-                onClick={() => clearItem(item.productId)}
+                onClick={(e) => clearItem(e, item.productId)}
                 className="text-gray-400 hover:text-gray-600 p-1"
               >
                 <XMarkIcon className="h-4 w-4" />
@@ -146,8 +177,7 @@ export default function TryOnList({ onClose }: TryOnListProps) {
             
             {item.status === 'ready' && item.imageUrl && (
               <div 
-                className="relative w-full aspect-[3/4] bg-gray-100 rounded overflow-hidden cursor-pointer"
-                onClick={() => navigateToProduct(item.productId)}
+                className="relative w-full aspect-[3/4] bg-gray-100 rounded overflow-hidden"
               >
                 <Image 
                   src={item.imageUrl} 
@@ -165,8 +195,7 @@ export default function TryOnList({ onClose }: TryOnListProps) {
             
             {item.status === 'pending' && (
               <div 
-                className="w-full aspect-[3/4] bg-gray-100 rounded flex items-center justify-center cursor-pointer"
-                onClick={() => navigateToProduct(item.productId)}
+                className="w-full aspect-[3/4] bg-gray-100 rounded flex items-center justify-center"
               >
                 <div className="text-center p-4">
                   <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-[#a1a561] mx-auto mb-3"></div>

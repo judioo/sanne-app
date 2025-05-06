@@ -65,6 +65,7 @@ function HomeContent() {
   const [allProducts, setAllProducts] = useState<ProductType[]>(cachedProducts);
   const [hasMore, setHasMore] = useState(true);
   const [hasPendingTryOn, setHasPendingTryOn] = useState(false);
+  const [pendingTryOnCount, setPendingTryOnCount] = useState(0);
   const [garmentColor, setGarmentColor] = useState('#a1a561');
   const [showTryOnList, setShowTryOnList] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -256,42 +257,61 @@ function HomeContent() {
     };
   }, [isMenuOpen]);
 
-  // Check for pending try-on in localStorage
+  // Check for pending try-on items in localStorage
   useEffect(() => {
     const checkPendingTryOn = () => {
-      const pendingTryOn = localStorage.getItem('pendingTryOn');
-      if (pendingTryOn) {
+      const storedItems = localStorage.getItem('tryOnItems');
+      if (storedItems) {
         try {
-          const tryOnData = JSON.parse(pendingTryOn);
-          // Check if it was created less than 24 hours ago
-          const timestamp = new Date(tryOnData.timestamp);
+          const items = JSON.parse(storedItems);
           const now = new Date();
-          const hoursSinceCreated = (now.getTime() - timestamp.getTime()) / (1000 * 60 * 60);
           
-          if (hoursSinceCreated < 24) {
-            setHasPendingTryOn(true);
-            // Get a product from the current list to extract its color
-            const product = allProducts.find(p => p.id === tryOnData.productId);
-            if (product) {
-              // Use the olive green color as default if product is not found
-              setGarmentColor('#a1a561');
-            }
+          // Filter out old items and count pending items
+          const validItems = items.filter((item: any) => {
+            const timestamp = new Date(item.timestamp);
+            const hoursSinceCreated = (now.getTime() - timestamp.getTime()) / (1000 * 60 * 60);
+            return hoursSinceCreated < 24;
+          });
+          
+          // Count pending and ready items
+          const pendingCount = validItems.filter((item: any) => item.status === 'pending').length;
+          const readyCount = validItems.filter((item: any) => item.status === 'ready').length;
+          
+          // Update status based on pending and ready counts
+          setHasPendingTryOn(pendingCount > 0 || readyCount > 0);
+          setPendingTryOnCount(pendingCount + readyCount);
+          
+          // Update localStorage with filtered items
+          if (validItems.length !== items.length) {
+            localStorage.setItem('tryOnItems', JSON.stringify(validItems));
+          }
+          
+          // Set garment color based on ready/pending status
+          if (readyCount > 0) {
+            // Use a slightly brighter color when there are ready items
+            setGarmentColor('#b1b571');
+          } else if (pendingCount > 0) {
+            // Use the standard olive color for pending items
+            setGarmentColor('#a1a561');
           } else {
-            // Try-on request is older than 24 hours, remove it
-            localStorage.removeItem('pendingTryOn');
-            setHasPendingTryOn(false);
+            // Default color
+            setGarmentColor('#a1a561');
           }
         } catch (e) {
-          console.error('Error parsing pendingTryOn data:', e);
-          localStorage.removeItem('pendingTryOn');
+          console.error('Error parsing tryOnItems:', e);
+          localStorage.removeItem('tryOnItems');
           setHasPendingTryOn(false);
+          setPendingTryOnCount(0);
         }
+      } else {
+        setHasPendingTryOn(false);
+        setPendingTryOnCount(0);
       }
     };
     
     checkPendingTryOn();
     
-    // Also check on visibility change in case user comes back to the tab
+    // Check on visibility change and periodically
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         checkPendingTryOn();
@@ -300,10 +320,14 @@ function HomeContent() {
     
     document.addEventListener('visibilitychange', handleVisibilityChange);
     
+    // Check every 30 seconds for status updates
+    const interval = setInterval(checkPendingTryOn, 30000);
+    
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      clearInterval(interval);
     };
-  }, [allProducts]);
+  }, []);
 
   // Toggle try-on list visibility when garment icon is clicked
   const toggleTryOnList = (e: React.MouseEvent) => {
@@ -314,6 +338,30 @@ function HomeContent() {
   // Close try-on list
   const closeTryOnList = () => {
     setShowTryOnList(false);
+    // Recheck pending items after closing the list
+    // This ensures the notification dot updates correctly after removing items
+    const storedItems = localStorage.getItem('tryOnItems');
+    if (storedItems) {
+      try {
+        const items = JSON.parse(storedItems);
+        const now = new Date();
+        
+        // Filter and count
+        const validItems = items.filter((item: any) => {
+          const timestamp = new Date(item.timestamp);
+          const hoursSinceCreated = (now.getTime() - timestamp.getTime()) / (1000 * 60 * 60);
+          return hoursSinceCreated < 24;
+        });
+        
+        const pendingCount = validItems.filter((item: any) => item.status === 'pending').length;
+        const readyCount = validItems.filter((item: any) => item.status === 'ready').length;
+        
+        setHasPendingTryOn(pendingCount > 0 || readyCount > 0);
+        setPendingTryOnCount(pendingCount + readyCount);
+      } catch (e) {
+        console.error('Error rechecking tryOnItems:', e);
+      }
+    }
   };
 
   // Desktop view with QR code
@@ -387,7 +435,15 @@ function HomeContent() {
                 
                 {/* Notification dot for pending try-on */}
                 {hasPendingTryOn && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 rounded-full w-3 h-3"></span>
+                  <div className="absolute -top-1 -right-1 bg-red-500 rounded-full flex items-center justify-center">
+                    {pendingTryOnCount > 1 ? (
+                      <span className="text-white text-[10px] font-bold w-4 h-4 flex items-center justify-center">
+                        {pendingTryOnCount > 9 ? '9+' : pendingTryOnCount}
+                      </span>
+                    ) : (
+                      <div className="w-3 h-3"></div>
+                    )}
+                  </div>
                 )}
               </button>
               
