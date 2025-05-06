@@ -234,7 +234,7 @@ export default function ProductPage() {
               {/* "Try The Look" button - always visible, replacing "Add to Cart" */}
               <div className="px-6 pt-3 pb-4 bg-white">
                 <button 
-                  className="w-full py-3 bg-black text-white rounded-md font-medium relative overflow-hidden group"
+                  className="w-full py-3 text-white rounded-md font-medium relative overflow-hidden group"
                   onClick={openDressingRoom}
                   onMouseEnter={() => setTryButtonHovered(true)}
                   onMouseLeave={() => setTryButtonHovered(false)}
@@ -244,7 +244,8 @@ export default function ProductPage() {
                       Try The Look
                     </span>
                   </span>
-                  <div className={`absolute inset-0 transition-all duration-500 ${tryButtonHovered ? 'bg-gradient-to-r from-purple-600 to-indigo-600' : 'bg-black'}`}></div>
+                  {/* Always show gradient background */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-indigo-600 transition-all duration-500"></div>
                   <div className="absolute inset-y-0 left-0 bg-white w-1 opacity-20 h-full transform -skew-x-20 transition-transform duration-700 
                                group-hover:translate-x-[800%]"></div>
                 </button>
