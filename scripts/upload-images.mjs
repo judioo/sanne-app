@@ -2,18 +2,17 @@
 import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
-import { existsSync, writeFileSync } from 'fs';
+import { existsSync } from 'fs';
 
 // Get the directory of the current script
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Check if .env file exists, create it if not
-const envPath = resolve(__dirname, '../.env');
-if (!existsSync(envPath)) {
-  console.log('⚠️ .env file not found. Creating a template .env file...');
-  writeFileSync(envPath, 'UPLOADTHING_TOKEN=your_token_here\n');
-  console.log(`✅ Template .env file created at ${envPath}`);
-  console.log('Please edit this file and add your actual UPLOADTHING_TOKEN before running again.');
+// Check for .env.local file first (Next.js standard)
+const envLocalPath = resolve(__dirname, '../.env.local');
+if (!existsSync(envLocalPath)) {
+  console.error('❌ .env.local file not found');
+  console.log('Please make sure your UPLOADTHING_TOKEN is set in .env.local file');
+  console.log('Example: UPLOADTHING_TOKEN=your_token_here');
   process.exit(1);
 }
 
@@ -45,8 +44,8 @@ if (missingPackages.length > 0) {
 
 // Load environment variables directly via execSync
 try {
-  // Run the dotenv CLI tool to load environment variables
-  const dotenvOutput = execSync('node -e "require(\'dotenv\').config(); console.log(process.env.UPLOADTHING_TOKEN)"', {
+  // Run the dotenv CLI tool to load environment variables from .env.local
+  const dotenvOutput = execSync('node -e "require(\'dotenv\').config({ path: \'.env.local\' }); console.log(process.env.UPLOADTHING_TOKEN)"', {
     encoding: 'utf8',
     cwd: resolve(__dirname, '..')
   }).trim();
@@ -54,9 +53,9 @@ try {
   // If dotenv found a token, set it in the current process
   if (dotenvOutput && dotenvOutput !== 'undefined') {
     process.env.UPLOADTHING_TOKEN = dotenvOutput;
-    console.log('✅ Loaded environment variables from .env file');
+    console.log('✅ Loaded environment variables from .env.local file');
   } else {
-    console.warn('⚠️ No UPLOADTHING_TOKEN found in .env file');
+    console.warn('⚠️ No UPLOADTHING_TOKEN found in .env.local file');
   }
 } catch (error) {
   console.error('❌ Failed to load environment variables:', error.message);
@@ -65,7 +64,7 @@ try {
 // Check for UPLOADTHING_TOKEN environment variable
 if (!process.env.UPLOADTHING_TOKEN) {
   console.error('❌ UPLOADTHING_TOKEN environment variable is not set');
-  console.log('Please set your UPLOADTHING_TOKEN in .env file or export it in your terminal');
+  console.log('Please set your UPLOADTHING_TOKEN in .env.local file or export it in your terminal');
   console.log('Example: export UPLOADTHING_TOKEN=your_secret_key');
   process.exit(1);
 }

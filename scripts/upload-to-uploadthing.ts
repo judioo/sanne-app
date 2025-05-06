@@ -1,6 +1,6 @@
-// Load environment variables from .env file
+// Load environment variables from .env.local file
 import * as dotenv from 'dotenv';
-dotenv.config();
+dotenv.config({ path: '.env.local' });
 
 // Mock type for Uploadthing SDK while not installed
 // This allows the script to be type-checked without installing uploadthing
@@ -26,7 +26,7 @@ import * as path from 'path';
  * 
  * Usage: 
  * 1. Install dependencies: pnpm add uploadthing dotenv
- * 2. Set your UPLOADTHING_TOKEN in .env file
+ * 2. Set your UPLOADTHING_TOKEN in .env.local file
  * 3. Run with: pnpx tsx scripts/upload-to-uploadthing.ts
  */
 
@@ -48,8 +48,8 @@ type UploadthingResponse = {
 // Check for required environment variables
 if (!process.env.UPLOADTHING_TOKEN) {
   console.error('❌ UPLOADTHING_TOKEN environment variable is not set');
-  console.log('Please set your UPLOADTHING_TOKEN in .env file');
-  console.log('Example .env file content: UPLOADTHING_TOKEN=your_token_here');
+  console.log('Please set your UPLOADTHING_TOKEN in .env.local file');
+  console.log('Example .env.local file content: UPLOADTHING_TOKEN=your_token_here');
   process.exit(1);
 }
 
