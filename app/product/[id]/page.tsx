@@ -83,7 +83,7 @@ export default function ProductPage() {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end justify-center">
       <div 
-        className={`bg-white w-full h-[90vh] rounded-t-2xl transform transition-all duration-300 ease-out ${
+        className={`bg-white w-full h-[90vh] rounded-t-2xl transform transition-all duration-300 ease-out overflow-hidden flex flex-col ${
           isVisible ? 'translate-y-0' : 'translate-y-full'
         }`}
       >
@@ -97,8 +97,8 @@ export default function ProductPage() {
           </button>
         </div>
 
-        {/* Image carousel */}
-        <div className="relative h-[40vh] bg-gray-100">
+        {/* Image carousel - fixed height */}
+        <div className="relative h-[40vh] bg-gray-100 flex-shrink-0">
           {product.images && product.images.length > 0 && (
             <div className="relative h-full">
               {product.images.map((image, index) => (
@@ -151,13 +151,15 @@ export default function ProductPage() {
           )}
         </div>
 
-        {/* Product details */}
-        <div className="p-6">
-          <h1 className="text-2xl font-bold mb-2">{product.name}</h1>
-          <p className="text-xl font-semibold mb-4">{product.price}د.إ</p>
+        {/* Product details - scrollable section */}
+        <div className="p-6 overflow-y-auto flex-grow">
+          <div className="mb-4">
+            <h1 className="text-2xl font-bold mb-2">{product.name}</h1>
+            <p className="text-xl font-semibold mb-4">{product.price}د.إ</p>
+          </div>
           
-          {/* Add to cart and wishlist buttons */}
-          <div className="mb-6">
+          {/* Add to cart and wishlist buttons - fixed position */}
+          <div className="mb-6 sticky top-0 bg-white pt-2 pb-4 z-10">
             <button className="w-full py-3 bg-black text-white rounded-md font-medium mb-3">
               Add to Cart
             </button>
@@ -167,8 +169,8 @@ export default function ProductPage() {
             </button>
           </div>
           
-          {/* Tabs navigation */}
-          <div className="flex border-b mb-4">
+          {/* Tabs navigation - sticky */}
+          <div className="flex border-b mb-4 sticky top-[140px] bg-white z-10">
             <button 
               onClick={() => setActiveTab('details')}
               className={`pb-2 px-4 ${activeTab === 'details' 
@@ -195,13 +197,24 @@ export default function ProductPage() {
             </button>
           </div>
           
-          {/* Tab content */}
+          {/* Tab content - scrollable */}
           <div className="tab-content">
             {activeTab === 'details' && (
               <div>
-                <p>
+                <p className="mb-6">
                   A beautiful {product.name.toLowerCase()} designed for comfort and style. 
                   Perfect for any occasion.
+                </p>
+                <p className="mb-6">
+                  This product features premium materials and expert craftsmanship, ensuring
+                  both durability and a luxurious feel. The attention to detail is evident in
+                  every stitch.
+                </p>
+                <p className="mb-6">
+                  Care instructions: Hand wash or dry clean only. Do not bleach. Iron on low heat if needed.
+                </p>
+                <p className="mb-6">
+                  Each item is made with care and passion, reflecting our commitment to quality and sustainability.
                 </p>
               </div>
             )}
@@ -209,7 +222,7 @@ export default function ProductPage() {
             {activeTab === 'collections' && (
               <div>
                 <h2 className="text-lg font-medium mb-2">Collections</h2>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2 mb-6">
                   {product.collections.map((collection, index) => (
                     <Link 
                       key={index} 
@@ -220,18 +233,30 @@ export default function ProductPage() {
                     </Link>
                   ))}
                 </div>
+                <p className="mb-6">
+                  This product belongs to our curated collections, each representing a unique aesthetic 
+                  and design philosophy. Explore similar items by clicking on the collection tags above.
+                </p>
               </div>
             )}
             
             {activeTab === 'category' && (
               <div>
                 <h2 className="text-lg font-medium mb-2">Category</h2>
-                <span className="inline-block px-3 py-1 bg-gray-100 rounded-full text-sm">
+                <span className="inline-block px-3 py-1 bg-gray-100 rounded-full text-sm mb-6">
                   {product.category === 'men' ? 'Men\'s' : 'Women\'s'}
                 </span>
+                <p className="mb-6">
+                  Our {product.category === 'men' ? 'men\'s' : 'women\'s'} collection is designed with 
+                  modern sensibilities while remaining timeless. Each piece is carefully selected to ensure
+                  versatility and style.
+                </p>
               </div>
             )}
           </div>
+          
+          {/* Add some bottom space to ensure scrollability is apparent */}
+          <div className="h-12"></div>
         </div>
       </div>
     </div>
