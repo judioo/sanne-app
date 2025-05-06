@@ -31,7 +31,6 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
   const [tryOnImages, setTryOnImages] = useState<string[]>([]);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [hasReadyTryOns, setHasReadyTryOns] = useState(false);
-  const [hasNewUpload, setHasNewUpload] = useState(false); // Track if a new image was just uploaded
   const fileInputRef = useRef<HTMLInputElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   
@@ -87,9 +86,8 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
           if (readyImages.length > 0) {
             setTryOnImages(readyImages);
             setHasReadyTryOns(true);
-            
-            // Do not change curtain state here - let the normal curtain behavior work
-            // Only display try-on images when curtains are not active
+            setShowCurtains(false); // Ensure curtains are open for ready try-ons
+            setCurtainsClosed(false);
           }
         }
       } catch (e) {
@@ -154,16 +152,6 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
         localStorage.setItem('userDressingRoomImage', base64String);
         setUploadedImage(base64String);
         setIsUploading(false);
-        
-        // Mark that a new image was uploaded - this will prioritize showing the uploaded image
-        setHasNewUpload(true);
-        
-        // Hide curtains if they're showing to reveal the new image immediately
-        if (showCurtains) {
-          setShowCurtains(false);
-          setCurtainsClosed(false);
-          setShowMessage(false);
-        }
       };
       
       reader.readAsDataURL(file);
@@ -251,9 +239,6 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
 
   // Go to dressing room with animation - updated to handle multiple try-on items
   const goToDressingRoom = () => {
-    // Reset the new upload flag since we're initiating a new try-on request
-    setHasNewUpload(false);
-    
     // If curtains are already closed (for existing try-on), just add the item and close
     if (startWithClosedCurtains) {
       // Add try-on item to localStorage
@@ -270,9 +255,7 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
       return;
     }
     
-    // Always follow the curtain animation flow, regardless of ready try-ons
-    // This restores the expected behavior for the "To The Dressing Room" button
-    
+    // Normal flow for new try-on request
     // Show curtains in initial open state
     setShowCurtains(true);
     setCurtainsClosed(false);
@@ -319,17 +302,7 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
         <div className="relative w-full aspect-[3/4] bg-gray-100 mb-6">
           {/* Default, uploaded image or try-on image carousel */}
           <div className="relative w-full h-full overflow-hidden">
-            {/* Prioritize showing the uploaded image if a new upload occurred or curtains are showing */}
-            {(hasNewUpload || showCurtains) ? (
-              <Image 
-                src={uploadedImage || '/lena.jpeg'} 
-                alt="Model" 
-                fill
-                className="object-cover"
-                priority
-              />
-            ) : hasReadyTryOns && tryOnImages.length > 0 ? (
-              // Otherwise, show the try-on image carousel if available
+            {hasReadyTryOns && tryOnImages.length > 0 ? (
               <>
                 {/* Try-on image carousel */}
                 <div className="relative h-full w-full">
@@ -385,7 +358,6 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
                 </div>
               </>
             ) : (
-              // Fallback to default/uploaded image
               <Image 
                 src={uploadedImage || '/lena.jpeg'} 
                 alt="Model" 
@@ -494,13 +466,15 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
           />
         </div>
         
-        {/* Try-on button */}
-        <div className="mt-auto">
+        {/* Dressing room button - Make sure it's not obscured */}
+        <div className="mb-10">
           <button 
             onClick={goToDressingRoom}
-            className="w-full py-4 bg-gradient-to-r from-[#a1a561] to-[#817c4a] text-white rounded-md font-medium"
+            className="w-full py-4 bg-[#a1a561] text-white rounded-md font-medium relative overflow-hidden group"
           >
-            To The Dressing Room
+            <span className="relative z-10">To The Dressing Room</span>
+            <div className="absolute inset-0 bg-gradient-to-r from-[#b1b571] to-[#91954f] 
+                          opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
           </button>
         </div>
         
