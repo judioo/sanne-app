@@ -1,12 +1,21 @@
-/** @type {import('next').NextConfig} */
+import type { NextConfig } from 'next';
 
-const nextConfig = {
+const nextConfig: NextConfig = {
   // Use standalone output for production deployment
   output: 'standalone',
   
-  // Configure images
+  // Configure images using remotePatterns instead of deprecated domains
   images: {
-    domains: ['cdn.shopify.com', 'sanne.com'],
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'cdn.shopify.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'sanne.com',
+      },
+    ],
   },
   
   // Disable validation during builds
@@ -31,11 +40,11 @@ const nextConfig = {
         source: '/ingest/decide',
         destination: 'https://us.i.posthog.com/decide',
       },
-    ]
+    ];
   },
 
   // This is required to support PostHog trailing slash API requests
   skipTrailingSlashRedirect: true,
 };
 
-module.exports = nextConfig;
+export default nextConfig;
