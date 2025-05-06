@@ -8,6 +8,7 @@ import { type inferRouterOutputs } from "@trpc/server";
 import { type AppRouter } from "../server/routers/index";
 import { useRouter, useSearchParams } from "next/navigation";
 import GarmentIcon from "./components/GarmentIcon";
+import TryOnList from "./components/TryOnList";
 
 // Define type for product data from tRPC
 type RouterOutput = inferRouterOutputs<AppRouter>;
@@ -65,6 +66,7 @@ function HomeContent() {
   const [hasMore, setHasMore] = useState(true);
   const [hasPendingTryOn, setHasPendingTryOn] = useState(false);
   const [garmentColor, setGarmentColor] = useState('#a1a561');
+  const [showTryOnList, setShowTryOnList] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);
   const isInitialLoad = useRef(cachedProducts.length === 0);
@@ -303,6 +305,17 @@ function HomeContent() {
     };
   }, [allProducts]);
 
+  // Toggle try-on list visibility when garment icon is clicked
+  const toggleTryOnList = (e: React.MouseEvent) => {
+    e.preventDefault(); // Prevent default navigation to /cart
+    setShowTryOnList(!showTryOnList);
+  };
+
+  // Close try-on list
+  const closeTryOnList = () => {
+    setShowTryOnList(false);
+  };
+
   // Desktop view with QR code
   if (!isMobile) {
     return (
@@ -364,15 +377,23 @@ function HomeContent() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </button>
-            <Link href="/cart" className="text-gray-700 relative">
-              {/* Replace handbag with garment icon */}
-              <GarmentIcon color={garmentColor} className="h-6 w-6" />
+            <div className="relative">
+              <button 
+                onClick={toggleTryOnList}
+                className="text-gray-700 relative"
+              >
+                {/* Garment icon with notification dot */}
+                <GarmentIcon color={garmentColor} className="h-6 w-6" />
+                
+                {/* Notification dot for pending try-on */}
+                {hasPendingTryOn && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 rounded-full w-3 h-3"></span>
+                )}
+              </button>
               
-              {/* Notification dot for pending try-on */}
-              {hasPendingTryOn && (
-                <span className="absolute -top-1 -right-1 bg-red-500 rounded-full w-3 h-3"></span>
-              )}
-            </Link>
+              {/* Try-on list popup */}
+              {showTryOnList && <TryOnList onClose={closeTryOnList} />}
+            </div>
           </div>
         </div>
         
