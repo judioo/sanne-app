@@ -3,17 +3,28 @@
 import posthog from 'posthog-js'
 import { PostHogProvider as OriginalPostHogProvider } from 'posthog-js/react'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { useEffect, Suspense } from 'react'
+import { useEffect, Suspense, useState } from 'react'
 
-if (typeof window !== 'undefined') {
-  posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY as string, {
-    api_host: '/ingest',
-    ui_host: 'https://us.posthog.com',
-    loaded: (posthog) => {
-      if (process.env.NODE_ENV === 'development') posthog.debug()
-    },
-    debug: process.env.NODE_ENV === 'development',
-  })
+// Use a useEffect for PostHog initialization to prevent hydration mismatch
+function PostHogInitializer() {
+  const [initialized, setInitialized] = useState(false)
+  
+  useEffect(() => {
+    // Only initialize PostHog on the client side
+    if (!initialized && typeof window !== 'undefined') {
+      posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY as string, {
+        api_host: '/ingest',
+        ui_host: 'https://us.posthog.com',
+        loaded: (posthog) => {
+          if (process.env.NODE_ENV === 'development') posthog.debug()
+        },
+        debug: process.env.NODE_ENV === 'development',
+      })
+      setInitialized(true)
+    }
+  }, [initialized])
+  
+  return null
 }
 
 // Create a client component that uses the hooks
@@ -22,7 +33,7 @@ function PostHogPageViewTracker() {
   const searchParams = useSearchParams()
 
   useEffect(() => {
-    if (pathname) {
+    if (pathname && typeof window !== 'undefined') {
       let url = window.origin + pathname
       if (searchParams?.toString()) {
         url = url + `?${searchParams.toString()}`
@@ -45,6 +56,7 @@ function PostHogFallback() {
 export function PostHogProvider({ children }: { children: React.ReactNode }) {
   return (
     <OriginalPostHogProvider client={posthog}>
+      <PostHogInitializer />
       <Suspense fallback={<PostHogFallback />}>
         <PostHogPageViewTracker />
       </Suspense>
