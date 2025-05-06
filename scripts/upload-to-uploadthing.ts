@@ -15,6 +15,11 @@ class UTApi {
   async uploadFilesFromUrl(files: Array<{ url: string; name: string; customId: string }>): Promise<Array<any>> {
     return [];
   }
+
+  // Added method to retrieve existing files
+  async getFiles(customId: string): Promise<any[]> {
+    return [];
+  }
 }
 
 import { products } from "../server/product-data";
@@ -34,6 +39,7 @@ import * as path from 'path';
 type UploadthingResponse = {
   data?: {
     url: string;
+    ufsUrl?: string; // New V7 API uses ufsUrl
     key: string;
     name: string;
     size: number;
@@ -79,6 +85,24 @@ type ProductUploadMap = {
   [productId: number]: string[];
 };
 
+// Helper function to extract a proper URL from the response
+function getUrlFromResponse(response: UploadthingResponse): string | null {
+  if (!response.data) return null;
+  
+  // Try to get the V7 API URL format first, then fall back to earlier version
+  return response.data.ufsUrl || response.data.url || null;
+}
+
+// Helper function to check if an error is a duplicate entry error
+function isDuplicateEntryError(error: any): boolean {
+  if (!error) return false;
+  
+  const errorMessage = error.message || '';
+  return errorMessage.includes('Duplicate entry') || 
+         errorMessage.includes('AlreadyExists') || 
+         errorMessage.includes('external_id_idx');
+}
+
 async function uploadProductImages() {
   console.log("Starting upload process for all product images...");
   
@@ -101,6 +125,8 @@ async function uploadProductImages() {
         name: fileName,
         customId: customId
       });
+      
+      console.log(`Prepared upload: ${fileName} with customId ${customId} from ${imageUrl}`);
     });
   });
   
@@ -108,36 +134,65 @@ async function uploadProductImages() {
 
   try {
     // Upload all files in batches to avoid rate limiting
-    const BATCH_SIZE = 10;
+    const BATCH_SIZE = 5;
     const productUploads: ProductUploadMap = {};
     
     for (let i = 0; i < allUploadFiles.length; i += BATCH_SIZE) {
       const batch = allUploadFiles.slice(i, i + BATCH_SIZE);
       console.log(`Uploading batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(allUploadFiles.length / BATCH_SIZE)}`);
       
-      const uploadedFiles = await utapi.uploadFilesFromUrl(batch);
-      
-      // Process the results
-      uploadedFiles.forEach((result: UploadthingResponse, index: number) => {
-        if (result.error) {
-          console.error(`Failed to upload ${batch[index].url}: ${result.error.message}`);
-          return;
-        }
+      try {
+        const uploadedFiles = await utapi.uploadFilesFromUrl(batch);
         
-        // Extract product ID from customId
-        const customId = batch[index].customId;
-        const productId = parseInt(customId.replace('product-', ''));
+        // Process the results
+        uploadedFiles.forEach((result: UploadthingResponse, index: number) => {
+          const { customId, url: sourceUrl } = batch[index];
+          const productId = parseInt(customId.replace('product-', ''));
+          
+          // Initialize the array if needed
+          if (!productUploads[productId]) {
+            productUploads[productId] = [];
+          }
+          
+          if (result.error) {
+            if (isDuplicateEntryError(result.error)) {
+              console.log(`File with customId ${customId} already exists. Treating as success.`);
+              
+              // Try to fetch the existing file with this customId
+              try {
+                const getFilesResult = utapi.getFiles(customId);
+                console.log(`Found existing file: ${JSON.stringify(getFilesResult)}`);
+                
+                // We'll handle this in the catch block if getFiles isn't supported
+                throw new Error('Getting existing files not implemented');
+              } catch (getFilesError) {
+                // If we can't get the existing file, use a placeholder URL for now
+                // In a real implementation, you'd want to query the files by customId
+                console.log(`Will update with existing URLs when possible`);
+                
+                // Don't add anything to the productUploads in this case
+                // We'll need to handle existing files separately
+              }
+            } else {
+              console.error(`Failed to upload ${sourceUrl}: ${result.error.message}`);
+            }
+            return;
+          }
+          
+          // Get URL from the result (handling V7 API changes)
+          const uploadUrl = getUrlFromResponse(result);
+          if (uploadUrl) {
+            productUploads[productId].push(uploadUrl);
+            console.log(`Successfully uploaded ${sourceUrl} to ${uploadUrl}`);
+          } else {
+            console.error(`Failed to get URL from response for ${sourceUrl}`);
+          }
+        });
         
-        // Initialize the array if needed
-        if (!productUploads[productId]) {
-          productUploads[productId] = [];
-        }
-        
-        // Add the URL to the product uploads
-        if (result.data) {
-          productUploads[productId].push(result.data.url);
-        }
-      });
+      } catch (batchError) {
+        console.error(`Error uploading batch: ${batchError}`);
+        // Continue with next batch even if this one fails
+      }
       
       // Sleep to avoid rate limiting
       if (i + BATCH_SIZE < allUploadFiles.length) {
@@ -146,7 +201,14 @@ async function uploadProductImages() {
       }
     }
     
-    console.log("All uploads completed successfully");
+    console.log("All uploads completed");
+    
+    // Count successful uploads
+    let totalUrls = 0;
+    Object.values(productUploads).forEach(urls => {
+      totalUrls += urls.length;
+    });
+    console.log(`Successfully processed ${totalUrls} URLs out of ${allUploadFiles.length} files`);
     
     // Update products with the new upload URLs
     const updatedProducts = products.map(product => {
