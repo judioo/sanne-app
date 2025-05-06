@@ -97,20 +97,68 @@ function getUrlFromResponse(response: UploadthingResponse): string | null {
 function isDuplicateEntryError(error: any): boolean {
   if (!error) return false;
   
-  const errorMessage = error.message || '';
+  const errorMessage = JSON.stringify(error);
   return errorMessage.includes('Duplicate entry') || 
          errorMessage.includes('AlreadyExists') || 
          errorMessage.includes('external_id_idx');
 }
 
+// Helper function to analyze and log error with decision
+function analyzeError(error: any, customId: string, sourceUrl: string): string {
+  // Convert error to string for easier parsing
+  const errorStr = JSON.stringify(error);
+  console.error('\n🔍 ERROR ANALYSIS:');
+  console.error(`Source URL: ${sourceUrl}`);
+  console.error(`CustomID: ${customId}`);
+  
+  if (isDuplicateEntryError(error)) {
+    console.error('✓ Identified as duplicate entry error');
+    console.error('✓ This indicates the file was already uploaded previously');
+    console.error('✓ Decision: Treat as success and attempt to retrieve the existing URL');
+    return 'DUPLICATE_ENTRY';
+  } 
+  
+  if (errorStr.includes('Invalid token')) {
+    console.error('✗ Invalid token error detected');
+    console.error('✗ Issue with the UPLOADTHING_TOKEN provided');
+    console.error('✗ Decision: Check token format and validity in .env.local file');
+    return 'INVALID_TOKEN';
+  }
+  
+  if (errorStr.includes('timed out') || errorStr.includes('ETIMEDOUT')) {
+    console.error('✗ Request timed out');
+    console.error('✗ This could be due to network issues or large file size');
+    console.error('✗ Decision: Skip this file and continue with others');
+    return 'TIMEOUT';
+  }
+  
+  if (errorStr.includes('404') || errorStr.includes('not found')) {
+    console.error('✗ Source image not found (404)');
+    console.error('✗ The source URL may be invalid or no longer accessible');
+    console.error('✗ Decision: Skip this file and continue with others');
+    return 'SOURCE_NOT_FOUND';
+  }
+  
+  console.error('✗ Unknown error type');
+  console.error('✗ Full error:', errorStr.substring(0, 500) + (errorStr.length > 500 ? '...' : ''));
+  console.error('✗ Decision: Skip this file and continue with others');
+  return 'UNKNOWN_ERROR';
+}
+
 async function uploadProductImages() {
-  console.log("Starting upload process for all product images...");
+  console.log("\n==================================================");
+  console.log("🚀 STARTING UPLOAD PROCESS FOR PRODUCT IMAGES");
+  console.log("==================================================\n");
   
   // Create a structure to prepare all image uploads
   const allUploadFiles: { url: string; name: string; customId: string }[] = [];
+  console.log("\n📋 PREPARING FILES FOR UPLOAD");
+  console.log("----------------------------");
   
   // Prepare all file upload requests
   products.forEach(product => {
+    console.log(`\n🏷️  Product ID: ${product.id} - ${product.name}`);
+    
     product.images.forEach((imageUrl, index) => {
       // Get the file extension from the URL
       const extension = path.extname(imageUrl.split('?')[0]) || '.jpg';
@@ -126,27 +174,47 @@ async function uploadProductImages() {
         customId: customId
       });
       
-      console.log(`Prepared upload: ${fileName} with customId ${customId} from ${imageUrl}`);
+      console.log(`   📎 Image ${index + 1}:`);
+      console.log(`      - Source URL:  ${imageUrl}`);
+      console.log(`      - CustomID:    ${customId}`);
+      console.log(`      - Output Name: ${fileName}`);
     });
   });
   
-  console.log(`Prepared ${allUploadFiles.length} files for upload`);
+  console.log(`\n✅ Prepared ${allUploadFiles.length} files for upload`);
 
   try {
+    console.log("\n📤 STARTING BATCH UPLOADS");
+    console.log("------------------------");
+    
     // Upload all files in batches to avoid rate limiting
     const BATCH_SIZE = 5;
     const productUploads: ProductUploadMap = {};
     
+    // Statistics
+    let successCount = 0;
+    let failureCount = 0;
+    let duplicateCount = 0;
+    let otherErrorCount = 0;
+    
     for (let i = 0; i < allUploadFiles.length; i += BATCH_SIZE) {
       const batch = allUploadFiles.slice(i, i + BATCH_SIZE);
-      console.log(`Uploading batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(allUploadFiles.length / BATCH_SIZE)}`);
+      
+      console.log(`\n🔄 Processing Batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(allUploadFiles.length / BATCH_SIZE)}`);
+      console.log(`   Files in this batch: ${batch.length}`);
+      
+      batch.forEach((file, idx) => {
+        console.log(`   ${idx+1}. ${file.name} (${file.customId}) - ${file.url}`);
+      });
       
       try {
+        console.log(`\n   Sending upload request to Uploadthing...`);
         const uploadedFiles = await utapi.uploadFilesFromUrl(batch);
+        console.log(`   Received response for ${uploadedFiles.length} files`);
         
         // Process the results
         uploadedFiles.forEach((result: UploadthingResponse, index: number) => {
-          const { customId, url: sourceUrl } = batch[index];
+          const { customId, name, url: sourceUrl } = batch[index];
           const productId = parseInt(customId.replace('product-', ''));
           
           // Initialize the array if needed
@@ -154,27 +222,25 @@ async function uploadProductImages() {
             productUploads[productId] = [];
           }
           
+          console.log(`\n   📝 Result for file ${index + 1}:`);
+          console.log(`      - CustomID:    ${customId}`);
+          console.log(`      - Output Name: ${name}`);
+          console.log(`      - Source URL:  ${sourceUrl}`);
+          
           if (result.error) {
-            if (isDuplicateEntryError(result.error)) {
-              console.log(`File with customId ${customId} already exists. Treating as success.`);
+            const errorType = analyzeError(result.error, customId, sourceUrl);
+            
+            if (errorType === 'DUPLICATE_ENTRY') {
+              duplicateCount++;
+              console.log(`      ♻️  DUPLICATE: File already exists on Uploadthing`);
               
-              // Try to fetch the existing file with this customId
-              try {
-                const getFilesResult = utapi.getFiles(customId);
-                console.log(`Found existing file: ${JSON.stringify(getFilesResult)}`);
-                
-                // We'll handle this in the catch block if getFiles isn't supported
-                throw new Error('Getting existing files not implemented');
-              } catch (getFilesError) {
-                // If we can't get the existing file, use a placeholder URL for now
-                // In a real implementation, you'd want to query the files by customId
-                console.log(`Will update with existing URLs when possible`);
-                
-                // Don't add anything to the productUploads in this case
-                // We'll need to handle existing files separately
-              }
+              // In a production environment, we would fetch the existing URL here
+              // For now, we note it and could implement a way to retrieve it later
+              console.log(`      ℹ️  NOTE: Will need to fetch existing URL separately`);
             } else {
-              console.error(`Failed to upload ${sourceUrl}: ${result.error.message}`);
+              failureCount++;
+              otherErrorCount++;
+              console.log(`      ❌ FAILED: ${result.error.message || 'Unknown error'}`);
             }
             return;
           }
@@ -182,37 +248,52 @@ async function uploadProductImages() {
           // Get URL from the result (handling V7 API changes)
           const uploadUrl = getUrlFromResponse(result);
           if (uploadUrl) {
+            successCount++;
             productUploads[productId].push(uploadUrl);
-            console.log(`Successfully uploaded ${sourceUrl} to ${uploadUrl}`);
+            console.log(`      ✅ SUCCESS: Uploaded to ${uploadUrl}`);
           } else {
-            console.error(`Failed to get URL from response for ${sourceUrl}`);
+            failureCount++;
+            console.log(`      ❌ FAILED: Could not extract URL from response`);
           }
         });
         
       } catch (batchError) {
-        console.error(`Error uploading batch: ${batchError}`);
-        // Continue with next batch even if this one fails
+        console.error(`\n❌ BATCH ERROR:`);
+        console.error(batchError);
+        console.error(`Decision: Continuing with next batch`);
+        failureCount += batch.length;
       }
       
       // Sleep to avoid rate limiting
       if (i + BATCH_SIZE < allUploadFiles.length) {
-        console.log('Waiting 1 second before next batch...');
+        console.log('\n⏳ Waiting 1 second before next batch to avoid rate limits...');
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
     
-    console.log("All uploads completed");
-    
-    // Count successful uploads
-    let totalUrls = 0;
-    Object.values(productUploads).forEach(urls => {
-      totalUrls += urls.length;
-    });
-    console.log(`Successfully processed ${totalUrls} URLs out of ${allUploadFiles.length} files`);
+    console.log("\n==================================================");
+    console.log("📊 UPLOAD PROCESS SUMMARY");
+    console.log("==================================================");
+    console.log(`✅ Successfully processed: ${successCount} files`);
+    console.log(`♻️  Duplicate entries:     ${duplicateCount} files`);
+    console.log(`❌ Failed uploads:        ${failureCount - duplicateCount} files`);
+    console.log(`📋 Total files processed: ${allUploadFiles.length} files`);
     
     // Update products with the new upload URLs
     const updatedProducts = products.map(product => {
       const uploads = productUploads[product.id] || [];
+      
+      console.log(`\n🏷️  Product ${product.id} (${product.name}):`);
+      console.log(`   - Original images: ${product.images.length}`);
+      console.log(`   - Successful uploads: ${uploads.length}`);
+      
+      if (uploads.length > 0) {
+        console.log(`   - Upload URLs:`);
+        uploads.forEach((url, idx) => {
+          console.log(`     ${idx+1}. ${url}`);
+        });
+      }
+      
       return {
         ...product,
         uploads
@@ -243,10 +324,11 @@ export const products: Product[] = ${JSON.stringify(updatedProducts, null, 2)};
 `;
     
     fs.writeFileSync(originalFilePath, fileContent);
-    console.log(`Updated product data written to ${originalFilePath}`);
+    console.log(`\n📄 Updated product data written to ${originalFilePath}`);
     
   } catch (error) {
-    console.error("Error during upload process:", error);
+    console.error("\n❌ FATAL ERROR:");
+    console.error(error);
   }
 }
 
