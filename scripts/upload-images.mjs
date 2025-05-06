@@ -43,15 +43,23 @@ if (missingPackages.length > 0) {
   }
 }
 
-// Load environment variables from .env file
+// Load environment variables directly via execSync
 try {
-  // We must use dynamic import for ESM compatibility
-  const dotenvPath = resolve(__dirname, '../node_modules/dotenv');
-  const dotenv = await import(dotenvPath);
-  dotenv.config({ path: envPath });
-  console.log('✅ Loaded environment variables from .env file');
+  // Run the dotenv CLI tool to load environment variables
+  const dotenvOutput = execSync('node -e "require(\'dotenv\').config(); console.log(process.env.UPLOADTHING_TOKEN)"', {
+    encoding: 'utf8',
+    cwd: resolve(__dirname, '..')
+  }).trim();
+  
+  // If dotenv found a token, set it in the current process
+  if (dotenvOutput && dotenvOutput !== 'undefined') {
+    process.env.UPLOADTHING_TOKEN = dotenvOutput;
+    console.log('✅ Loaded environment variables from .env file');
+  } else {
+    console.warn('⚠️ No UPLOADTHING_TOKEN found in .env file');
+  }
 } catch (error) {
-  console.error('❌ Failed to load environment variables:', error);
+  console.error('❌ Failed to load environment variables:', error.message);
 }
 
 // Check for UPLOADTHING_TOKEN environment variable
@@ -74,7 +82,10 @@ const scriptPath = resolve(__dirname, 'upload-to-uploadthing.ts');
 console.log(`📂 Running upload script: ${scriptPath}`);
 
 try {
-  execSync(`pnpx tsx ${scriptPath}`, { stdio: 'inherit' });
+  execSync(`pnpx tsx ${scriptPath}`, { 
+    stdio: 'inherit',
+    env: { ...process.env }  // Pass the current environment including UPLOADTHING_TOKEN
+  });
   console.log('✅ Upload script completed successfully');
 } catch (error) {
   console.error('❌ Upload script failed', error);
