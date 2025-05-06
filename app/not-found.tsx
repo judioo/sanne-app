@@ -1,10 +1,10 @@
-'use client'
+// This file is for the App Router's not-found handling
+// It should be a server component to avoid client-side hooks issues
 
-import React, { Suspense } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 
-function NotFoundContent() {
+export default function NotFound() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center text-center p-4">
       <Image
@@ -25,13 +25,5 @@ function NotFoundContent() {
         Return to Shop
       </Link>
     </div>
-  )
-}
-
-export default function NotFound() {
-  return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
-      <NotFoundContent />
-    </Suspense>
   )
 }
