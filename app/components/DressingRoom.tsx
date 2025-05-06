@@ -7,6 +7,7 @@ import { XMarkIcon, ArrowUpTrayIcon, CameraIcon } from '@heroicons/react/24/outl
 type DressingRoomProps = {
   product: any; // Product details
   onClose: () => void;
+  startWithClosedCurtains?: boolean; // New prop to start with curtains closed
 }
 
 // Define try-on item type
@@ -18,11 +19,11 @@ type TryOnItem = {
   imageUrl?: string;
 };
 
-export default function DressingRoom({ product, onClose }: DressingRoomProps) {
+export default function DressingRoom({ product, onClose, startWithClosedCurtains = false }: DressingRoomProps) {
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [showCurtains, setShowCurtains] = useState(false);
-  const [curtainsClosed, setCurtainsClosed] = useState(false);
+  const [showCurtains, setShowCurtains] = useState(startWithClosedCurtains);
+  const [curtainsClosed, setCurtainsClosed] = useState(startWithClosedCurtains);
   const [showMessage, setShowMessage] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
   const [tooltipTimeout, setTooltipTimeout] = useState<NodeJS.Timeout | null>(null);
@@ -55,7 +56,12 @@ export default function DressingRoom({ product, onClose }: DressingRoomProps) {
       setTooltipTimeout(timer);
       return () => clearTimeout(timer);
     }
-  }, []);
+    
+    // If starting with closed curtains, show message immediately
+    if (startWithClosedCurtains) {
+      setShowMessage(true);
+    }
+  }, [startWithClosedCurtains]);
 
   // Add click outside handler to close tooltip
   useEffect(() => {
@@ -181,6 +187,23 @@ export default function DressingRoom({ product, onClose }: DressingRoomProps) {
 
   // Go to dressing room with animation - updated to handle multiple try-on items
   const goToDressingRoom = () => {
+    // If curtains are already closed (for existing try-on), just add the item and close
+    if (startWithClosedCurtains) {
+      // Add try-on item to localStorage
+      addTryOnItem();
+      
+      // Auto close after a few seconds
+      setTimeout(() => {
+        // Close both the dressing room and product card by navigating back to the main page
+        onClose();
+        
+        // Go back to main page after showing the message
+        window.history.back();
+      }, 3000);
+      return;
+    }
+    
+    // Normal flow for new try-on request
     // Show curtains in initial open state
     setShowCurtains(true);
     setCurtainsClosed(false);

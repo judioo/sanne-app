@@ -88,8 +88,12 @@ export default function TryOnList({ onClose }: TryOnListProps) {
     };
   }, [onClose]);
 
-  // Navigate to dressing room for the product
+  // Navigate directly to dressing room
   const navigateToDressingRoom = (productId: number) => {
+    // Store an indicator that we want to open the dressing room automatically
+    sessionStorage.setItem('openDressingRoom', 'true');
+    
+    // Navigate to the product page
     router.push(`/product/${productId}`);
     onClose();
   };

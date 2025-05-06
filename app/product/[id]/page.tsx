@@ -17,6 +17,7 @@ export default function ProductPage() {
   const [activeTab, setActiveTab] = useState('details');
   const [isCardExpanded, setIsCardExpanded] = useState(false);
   const [showDressingRoom, setShowDressingRoom] = useState(false);
+  const [hasPendingTryOn, setHasPendingTryOn] = useState(false);
   const [tryButtonHovered, setTryButtonHovered] = useState(false);
   const infoCardRef = useRef<HTMLDivElement>(null);
   const startYRef = useRef<number | null>(null);
@@ -44,14 +45,46 @@ export default function ProductPage() {
     }
   };
 
-  // Animation effect when component mounts
+  // Animation effect when component mounts and check if we should open dressing room
   useEffect(() => {
     // Slight delay to ensure animation works
     const timer = setTimeout(() => {
       setIsVisible(true);
+      
+      // Check if we should automatically open the dressing room
+      const shouldOpenDressingRoom = sessionStorage.getItem('openDressingRoom');
+      if (shouldOpenDressingRoom === 'true' && product) {
+        // Remove the flag so it doesn't trigger again on refresh
+        sessionStorage.removeItem('openDressingRoom');
+        // Open dressing room after the product card is visible
+        setTimeout(() => {
+          setShowDressingRoom(true);
+        }, 300);
+      }
     }, 100);
+    
     return () => clearTimeout(timer);
-  }, []);
+  }, [product]);
+  
+  // Check if this product has a pending try-on
+  useEffect(() => {
+    if (product) {
+      // Get try-on items from localStorage
+      const storedItems = localStorage.getItem('tryOnItems');
+      if (storedItems) {
+        try {
+          const items = JSON.parse(storedItems);
+          // Find if this product has a pending try-on
+          const hasTryOn = items.some((item: any) => 
+            item.productId === product.id
+          );
+          setHasPendingTryOn(hasTryOn);
+        } catch (e) {
+          console.error('Error checking for pending try-on:', e);
+        }
+      }
+    }
+  }, [product]);
 
   const closeProductPage = () => {
     setIsVisible(false);
@@ -130,7 +163,11 @@ export default function ProductPage() {
   return (
     <>
       {showDressingRoom ? (
-        <DressingRoom product={product} onClose={closeDressingRoom} />
+        <DressingRoom 
+          product={product} 
+          onClose={closeDressingRoom} 
+          startWithClosedCurtains={hasPendingTryOn}
+        />
       ) : (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end justify-center">
           <div 
