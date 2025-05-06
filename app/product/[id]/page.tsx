@@ -18,8 +18,6 @@ export default function ProductPage() {
   const [isCardExpanded, setIsCardExpanded] = useState(false);
   const [showDressingRoom, setShowDressingRoom] = useState(false);
   const [hasPendingTryOn, setHasPendingTryOn] = useState(false);
-  const [hasReadyTryOn, setHasReadyTryOn] = useState(false);
-  const [readyTryOnImages, setReadyTryOnImages] = useState<string[]>([]);
   const [tryButtonHovered, setTryButtonHovered] = useState(false);
   const infoCardRef = useRef<HTMLDivElement>(null);
   const startYRef = useRef<number | null>(null);
@@ -68,7 +66,7 @@ export default function ProductPage() {
     return () => clearTimeout(timer);
   }, [product]);
   
-  // Check if this product has a pending or ready try-on
+  // Check if this product has a pending try-on
   useEffect(() => {
     if (product) {
       // Get try-on items from localStorage
@@ -76,32 +74,13 @@ export default function ProductPage() {
       if (storedItems) {
         try {
           const items = JSON.parse(storedItems);
-          
-          // Find if this product has any try-on items
-          const productItems = items.filter((item: any) => 
+          // Find if this product has a pending try-on
+          const hasTryOn = items.some((item: any) => 
             item.productId === product.id
           );
-          
-          // Check for pending items
-          const pendingItems = productItems.filter((item: any) => 
-            item.status === 'pending'
-          );
-          setHasPendingTryOn(pendingItems.length > 0);
-          
-          // Check for ready items
-          const readyItems = productItems.filter((item: any) => 
-            item.status === 'ready' && item.imageUrl
-          );
-          setHasReadyTryOn(readyItems.length > 0);
-          
-          // Collect all ready images
-          const images = readyItems
-            .filter((item: any) => item.imageUrl)
-            .map((item: any) => item.imageUrl);
-          setReadyTryOnImages(images);
-          
+          setHasPendingTryOn(hasTryOn);
         } catch (e) {
-          console.error('Error checking for try-on items:', e);
+          console.error('Error checking for pending try-on:', e);
         }
       }
     }
@@ -188,8 +167,6 @@ export default function ProductPage() {
           product={product} 
           onClose={closeDressingRoom} 
           startWithClosedCurtains={hasPendingTryOn}
-          readyImages={readyTryOnImages}
-          showReadyImagesCarousel={hasReadyTryOn && !hasPendingTryOn}
         />
       ) : (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end justify-center">
