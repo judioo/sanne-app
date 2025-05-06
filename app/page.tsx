@@ -1,16 +1,7 @@
+'use client'
+
 import Image from "next/image";
-import { Geist, Geist_Mono } from "next/font/google";
-import { useEffect, useState } from "react";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+import { useState, useEffect } from "react";
 
 // Product data
 const products = [
@@ -119,7 +110,7 @@ export default function Home() {
   // Desktop view with QR code
   if (!isMobile) {
     return (
-      <div className={`${geistSans.className} flex flex-col items-center justify-center min-h-screen p-8 text-center`}>
+      <div className="flex flex-col items-center justify-center min-h-screen p-8 text-center">
         <Image
           src="/sanne-transparent.png"
           alt="Sanne Logo"
@@ -144,7 +135,7 @@ export default function Home() {
 
   // Mobile view
   return (
-    <div className={`${geistSans.className} ${geistMono.className} flex flex-col min-h-screen`}>
+    <div className="flex flex-col min-h-screen">
       {/* Header */}
       <header className="sticky top-0 bg-white z-10 shadow-sm">
         <div className="flex justify-between items-center p-4">
@@ -168,7 +159,7 @@ export default function Home() {
           <div className="flex gap-2">
             <button className="text-gray-700">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
               </svg>
             </button>
             <button className="text-gray-700">
