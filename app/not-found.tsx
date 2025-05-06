@@ -16,7 +16,7 @@ function NotFoundContent() {
       />
       <h1 className="text-3xl font-bold mb-4">Page Not Found</h1>
       <p className="text-gray-600 mb-8">
-        We couldn't find the page you're looking for.
+        We couldn&apos;t find the page you&apos;re looking for.
       </p>
       <Link
         href="/"
