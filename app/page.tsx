@@ -1,7 +1,7 @@
 'use client'
 
 import Image from "next/image";
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, Suspense } from "react";
 import { trpc } from "../utils/trpc";
 import Link from "next/link";
 import { type inferRouterOutputs } from "@trpc/server";
@@ -29,7 +29,27 @@ let cachedSortBy: 'price_asc' | 'price_desc' | undefined = undefined;
 let cachedSearchTerm: string = "";
 let cachedPage: number = 1;
 
+// Main component that doesn't use useSearchParams directly
 export default function Home() {
+  return (
+    <Suspense fallback={<LoadingSpinner />}>
+      <HomeContent />
+    </Suspense>
+  );
+}
+
+// Loading spinner component for Suspense fallback
+function LoadingSpinner() {
+  return (
+    <div className="flex flex-col min-h-screen justify-center items-center">
+      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-gray-900"></div>
+      <p className="mt-4 text-gray-600">Loading...</p>
+    </div>
+  );
+}
+
+// Actual content component that uses useSearchParams
+function HomeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isMobile, setIsMobile] = useState(true);
