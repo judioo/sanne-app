@@ -14,6 +14,9 @@ export default function DressingRoom({ product, onClose }: DressingRoomProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [showCurtains, setShowCurtains] = useState(false);
   const [curtainsOpening, setCurtainsOpening] = useState(false);
+  const [showTooltip, setShowTooltip] = useState(false);
+  const [tooltipTimeout, setTooltipTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [isFirstVisit, setIsFirstVisit] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Load saved image from local storage on component mount
@@ -21,6 +24,25 @@ export default function DressingRoom({ product, onClose }: DressingRoomProps) {
     const savedImage = localStorage.getItem('userDressingRoomImage');
     if (savedImage) {
       setUploadedImage(savedImage);
+    }
+    
+    // Check if this is the first visit to dressing room
+    const hasVisitedDressingRoom = localStorage.getItem('hasVisitedDressingRoom');
+    if (hasVisitedDressingRoom) {
+      setIsFirstVisit(false);
+    } else {
+      // Show tooltip on first visit
+      setShowTooltip(true);
+      // Set flag in local storage to remember the user has visited
+      localStorage.setItem('hasVisitedDressingRoom', 'true');
+      
+      // Auto-hide tooltip after 5 seconds
+      const timer = setTimeout(() => {
+        setShowTooltip(false);
+      }, 5000);
+      
+      setTooltipTimeout(timer);
+      return () => clearTimeout(timer);
     }
   }, []);
 
@@ -48,6 +70,37 @@ export default function DressingRoom({ product, onClose }: DressingRoomProps) {
   const triggerFileUpload = () => {
     if (fileInputRef.current) {
       fileInputRef.current.click();
+    }
+  };
+
+  // Handle long press on photo icon
+  const handlePhotoIconTouchStart = () => {
+    // Clear any existing timeout
+    if (tooltipTimeout) {
+      clearTimeout(tooltipTimeout);
+      setTooltipTimeout(null);
+    }
+    
+    // Set a timeout to detect long press (500ms)
+    const timer = setTimeout(() => {
+      setShowTooltip(true);
+      
+      // Auto-hide tooltip after 3 seconds
+      const hideTimer = setTimeout(() => {
+        setShowTooltip(false);
+      }, 3000);
+      
+      setTooltipTimeout(hideTimer);
+    }, 500);
+    
+    setTooltipTimeout(timer);
+  };
+  
+  // Clear timeout if touch ends before long press threshold
+  const handlePhotoIconTouchEnd = () => {
+    if (tooltipTimeout) {
+      clearTimeout(tooltipTimeout);
+      setTooltipTimeout(null);
     }
   };
 
@@ -119,14 +172,39 @@ export default function DressingRoom({ product, onClose }: DressingRoomProps) {
             )}
           </div>
           
-          {/* Upload overlay */}
+          {/* Upload overlay with speech bubble tooltip */}
           <div className="absolute bottom-4 right-4 flex space-x-2">
-            <button 
-              onClick={triggerFileUpload}
-              className="p-3 bg-black text-white rounded-full shadow-lg"
-            >
-              <CameraIcon className="h-6 w-6" />
-            </button>
+            <div className="relative">
+              <button 
+                onClick={triggerFileUpload}
+                onTouchStart={handlePhotoIconTouchStart}
+                onTouchEnd={handlePhotoIconTouchEnd}
+                onMouseDown={handlePhotoIconTouchStart}
+                onMouseUp={handlePhotoIconTouchEnd}
+                onMouseLeave={handlePhotoIconTouchEnd}
+                className="p-3 bg-black text-white rounded-full shadow-lg"
+              >
+                <CameraIcon className="h-6 w-6" />
+              </button>
+              
+              {/* Speech bubble tooltip */}
+              {showTooltip && (
+                <div className="absolute bottom-full right-0 mb-2 w-64 p-3 bg-black text-white rounded-lg shadow-lg transform transition-opacity duration-300 animate-fade-in">
+                  <div className="relative">
+                    <p className="text-sm mb-1">
+                      {uploadedImage 
+                        ? "Tap to change your photo"
+                        : "Upload your photo to see how this would look on you!"}
+                    </p>
+                    {!uploadedImage && (
+                      <p className="text-xs text-gray-300">Hold this button to see this tip again</p>
+                    )}
+                    {/* Triangle pointer */}
+                    <div className="absolute bottom-[-12px] right-3 w-0 h-0 border-l-[6px] border-l-transparent border-t-[12px] border-t-black border-r-[6px] border-r-transparent"></div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
           
           {/* Hidden file input */}
@@ -139,24 +217,7 @@ export default function DressingRoom({ product, onClose }: DressingRoomProps) {
           />
         </div>
         
-        {/* Upload prompt */}
-        <div className="bg-gray-50 p-4 rounded-lg mb-6">
-          <h2 className="font-medium mb-2">Personalize Your Experience</h2>
-          <p className="text-gray-600 mb-4">
-            {uploadedImage ? 
-              "You're using your own photo. Want to try a different one?" : 
-              "See how this would look on you! Upload your photo for a more personalized experience."}
-          </p>
-          <button 
-            onClick={triggerFileUpload}
-            className="flex items-center justify-center w-full py-3 border border-black rounded-md"
-          >
-            <ArrowUpTrayIcon className="h-5 w-5 mr-2" />
-            {uploadedImage ? "Change Photo" : "Upload Your Photo"}
-          </button>
-        </div>
-        
-        {/* Dressing room button - Moved above Selected Item section */}
+        {/* Dressing room button - Positioned above Selected Item section */}
         <button 
           onClick={goToDressingRoom}
           className="py-4 bg-black text-white rounded-md font-medium relative overflow-hidden group mb-6"
