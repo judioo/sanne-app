@@ -43,6 +43,17 @@ if (missingPackages.length > 0) {
   }
 }
 
+// Load environment variables from .env file
+try {
+  // We must use dynamic import for ESM compatibility
+  const dotenvPath = resolve(__dirname, '../node_modules/dotenv');
+  const dotenv = await import(dotenvPath);
+  dotenv.config({ path: envPath });
+  console.log('✅ Loaded environment variables from .env file');
+} catch (error) {
+  console.error('❌ Failed to load environment variables:', error);
+}
+
 // Check for UPLOADTHING_TOKEN environment variable
 if (!process.env.UPLOADTHING_TOKEN) {
   console.error('❌ UPLOADTHING_TOKEN environment variable is not set');
@@ -50,6 +61,13 @@ if (!process.env.UPLOADTHING_TOKEN) {
   console.log('Example: export UPLOADTHING_TOKEN=your_secret_key');
   process.exit(1);
 }
+
+// Show token being used (masked for security)
+const tokenLength = process.env.UPLOADTHING_TOKEN.length;
+const maskedToken = tokenLength > 8 
+  ? process.env.UPLOADTHING_TOKEN.substring(0, 4) + '•'.repeat(tokenLength - 8) + process.env.UPLOADTHING_TOKEN.substring(tokenLength - 4)
+  : '•'.repeat(tokenLength);
+console.log(`🔑 Using UPLOADTHING_TOKEN: ${maskedToken}`);
 
 // Run the upload script
 const scriptPath = resolve(__dirname, 'upload-to-uploadthing.ts');
