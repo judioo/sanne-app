@@ -1,86 +1,24 @@
 'use client'
 
 import Image from "next/image";
-import { useState, useEffect } from "react";
-
-// Product data
-const products = [
-  {
-    id: 1,
-    name: "Gianna green silk dress",
-    price: "5,985",
-    image: "/product-images/green-dress.jpg",
-    category: "women",
-  },
-  {
-    id: 2,
-    name: "The Luna dress",
-    price: "5,090",
-    image: "/product-images/luna-dress.jpg",
-    category: "women",
-  },
-  {
-    id: 3,
-    name: "Azul jeans",
-    price: "4,030",
-    image: "/product-images/azul-jeans.jpg",
-    category: "men",
-  },
-  {
-    id: 4,
-    name: "Sunset indigo skirt",
-    price: "5,970",
-    image: "/product-images/indigo-skirt.jpg",
-    category: "women",
-  },
-  {
-    id: 5,
-    name: "Malibu Midnight bohemian skirt",
-    price: "4,685",
-    image: "/product-images/bohemian-skirt.jpg",
-    category: "women",
-  },
-  {
-    id: 6,
-    name: "Malibu Midnight backless top",
-    price: "2,400",
-    image: "/product-images/backless-top.jpg",
-    category: "women",
-  },
-  {
-    id: 7,
-    name: "Daydream Corset Top",
-    price: "3,585",
-    image: "/product-images/corset-top.jpg",
-    category: "women",
-  },
-  {
-    id: 8,
-    name: "Terra luxe leather jacket",
-    price: "9,525",
-    image: "/product-images/leather-jacket.jpg",
-    category: "men",
-  },
-  {
-    id: 9,
-    name: "Classic Oxford Shirt",
-    price: "3,250",
-    image: "/product-images/oxford-shirt.jpg",
-    category: "men",
-  },
-  {
-    id: 10,
-    name: "Urban Slim Chinos",
-    price: "4,150",
-    image: "/product-images/chinos.jpg",
-    category: "men",
-  },
-];
+import { useState, useEffect, useRef } from "react";
+import { trpc } from "../utils/trpc";
 
 export default function Home() {
   const [isMobile, setIsMobile] = useState(true);
-  const [category, setCategory] = useState("all");
-  const [filteredProducts, setFilteredProducts] = useState(products);
+  const [category, setCategory] = useState<'all' | 'men' | 'women'>('all');
+  const [sortBy, setSortBy] = useState<'price_asc' | 'price_desc' | undefined>(undefined);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Fetch products using tRPC
+  const { data: products = [], isLoading } = trpc.products.getAll.useQuery({
+    category,
+    sortBy,
+    search: searchTerm,
+  });
 
   useEffect(() => {
     // Check if the device is mobile
@@ -99,13 +37,11 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    // Filter products based on selected category
-    if (category === "all") {
-      setFilteredProducts(products);
-    } else {
-      setFilteredProducts(products.filter(product => product.category === category));
+    // Focus the search input when search is opened
+    if (isSearchOpen && searchInputRef.current) {
+      searchInputRef.current.focus();
     }
-  }, [category]);
+  }, [isSearchOpen]);
 
   // Desktop view with QR code
   if (!isMobile) {
@@ -157,7 +93,10 @@ export default function Home() {
           </div>
           
           <div className="flex gap-2">
-            <button className="text-gray-700">
+            <button 
+              className="text-gray-700"
+              onClick={() => setIsSearchOpen(!isSearchOpen)}
+            >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
                 <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
               </svg>
@@ -169,6 +108,42 @@ export default function Home() {
             </button>
           </div>
         </div>
+
+        {/* Search Bar */}
+        {isSearchOpen && (
+          <div className="px-4 pb-4 animate-fade-in">
+            <div className="relative">
+              <input
+                ref={searchInputRef}
+                type="text"
+                placeholder="Search products..."
+                className="w-full p-2 border rounded-md pl-10"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+              <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                fill="none" 
+                viewBox="0 0 24 24" 
+                strokeWidth={1.5} 
+                stroke="currentColor" 
+                className="w-5 h-5 absolute left-2 top-2.5 text-gray-400"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+              </svg>
+              {searchTerm && (
+                <button 
+                  className="absolute right-2 top-2.5 text-gray-400"
+                  onClick={() => setSearchTerm("")}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </header>
 
       {/* Category Tabs */}
@@ -201,29 +176,85 @@ export default function Home() {
         
         {/* Filter & Sort Button */}
         <div className="flex justify-end mb-4">
-          <button className="flex items-center text-sm">
+          <button 
+            className="flex items-center text-sm"
+            onClick={() => setIsFilterOpen(!isFilterOpen)}
+          >
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4 mr-1">
               <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75" />
             </svg>
             Filter & Sort
           </button>
         </div>
+
+        {/* Filter & Sort Panel */}
+        {isFilterOpen && (
+          <div className="mb-6 p-4 bg-gray-50 rounded-md animate-fade-in">
+            <h3 className="font-medium mb-3">Sort by Price</h3>
+            <div className="flex flex-col gap-2">
+              <label className="flex items-center">
+                <input
+                  type="radio"
+                  name="sort"
+                  checked={sortBy === 'price_asc'}
+                  onChange={() => setSortBy('price_asc')}
+                  className="mr-2"
+                />
+                Price: Low to High
+              </label>
+              <label className="flex items-center">
+                <input
+                  type="radio"
+                  name="sort"
+                  checked={sortBy === 'price_desc'}
+                  onChange={() => setSortBy('price_desc')}
+                  className="mr-2"
+                />
+                Price: High to Low
+              </label>
+              {sortBy && (
+                <button 
+                  className="text-sm text-blue-600 mt-2"
+                  onClick={() => setSortBy(undefined)}
+                >
+                  Clear Sort
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+        
+        {/* Loading State */}
+        {isLoading && (
+          <div className="flex justify-center items-center py-10">
+            <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-gray-900"></div>
+          </div>
+        )}
         
         {/* Product Grid */}
-        <div className="grid grid-cols-2 gap-4">
-          {filteredProducts.map((product) => (
-            <div key={product.id} className="mb-6">
-              <div className="bg-gray-100 aspect-[3/4] mb-2 relative">
-                {/* Placeholder for product image */}
-                <div className="absolute inset-0 flex items-center justify-center text-gray-400">
-                  {product.name}
+        {!isLoading && (
+          <div className="grid grid-cols-2 gap-4">
+            {products?.map((product) => (
+              <div key={product.id} className="mb-6">
+                <div className="bg-gray-100 aspect-[3/4] mb-2 relative">
+                  {/* Placeholder for product image */}
+                  <div className="absolute inset-0 flex items-center justify-center text-gray-400">
+                    {product.name}
+                  </div>
                 </div>
+                <h3 className="text-sm font-medium">{product.name}</h3>
+                <p className="text-sm mt-1 font-bold">{product.price}د.إ</p>
               </div>
-              <h3 className="text-sm font-medium">{product.name}</h3>
-              <p className="text-sm mt-1 font-bold">{product.price}د.إ</p>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
+
+        {/* No Results */}
+        {!isLoading && products?.length === 0 && (
+          <div className="text-center py-10">
+            <p className="text-gray-500">No products found</p>
+          </div>
+        )}
       </main>
 
       {/* Bottom Navigation */}

@@ -1,6 +1,7 @@
 import '@/styles/globals.css'
 import { Geist, Geist_Mono } from "next/font/google"
 import { PostHogProvider } from '@/app/providers'
+import { TRPCProvider } from './trpc-provider'
 import { Metadata } from 'next'
 
 const geistSans = Geist({
@@ -26,9 +27,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
-        <PostHogProvider>
-          {children}
-        </PostHogProvider>
+        <TRPCProvider>
+          <PostHogProvider>
+            {children}
+          </PostHogProvider>
+        </TRPCProvider>
       </body>
     </html>
   )
