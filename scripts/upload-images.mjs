@@ -21,11 +21,11 @@ try {
   }
 }
 
-// Check for UPLOADTHING_SECRET environment variable
-if (!process.env.UPLOADTHING_SECRET) {
-  console.error('❌ UPLOADTHING_SECRET environment variable is not set');
-  console.log('Please set your UPLOADTHING_SECRET in .env file or export it in your terminal');
-  console.log('Example: export UPLOADTHING_SECRET=your_secret_key');
+// Check for UPLOADTHING_TOKEN environment variable
+if (!process.env.UPLOADTHING_TOKEN) {
+  console.error('❌ UPLOADTHING_TOKEN environment variable is not set');
+  console.log('Please set your UPLOADTHING_TOKEN in .env file or export it in your terminal');
+  console.log('Example: export UPLOADTHING_TOKEN=your_secret_key');
   process.exit(1);
 }
 
