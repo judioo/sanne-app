@@ -13,7 +13,7 @@ export default function DressingRoom({ product, onClose }: DressingRoomProps) {
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [showCurtains, setShowCurtains] = useState(false);
-  const [curtainsOpening, setCurtainsOpening] = useState(false);
+  const [curtainsClosed, setCurtainsClosed] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
   const [tooltipTimeout, setTooltipTimeout] = useState<NodeJS.Timeout | null>(null);
   const [isFirstVisit, setIsFirstVisit] = useState(true);
@@ -128,20 +128,18 @@ export default function DressingRoom({ product, onClose }: DressingRoomProps) {
     }
   };
 
-  // Go to dressing room with animation
+  // Go to dressing room with animation - now starts open and closes permanently
   const goToDressingRoom = () => {
+    // Show curtains in initial open state
     setShowCurtains(true);
+    setCurtainsClosed(false);
     
-    // After curtains close, wait and then open them
+    // After a small delay, close the curtains
     setTimeout(() => {
-      setCurtainsOpening(true);
+      setCurtainsClosed(true);
       
-      // Reset curtain state after animation completes
-      setTimeout(() => {
-        setShowCurtains(false);
-        setCurtainsOpening(false);
-      }, 2000);
-    }, 1500);
+      // Curtains stay closed - no reset
+    }, 500);
   };
 
   return (
@@ -171,12 +169,12 @@ export default function DressingRoom({ product, onClose }: DressingRoomProps) {
               priority
             />
             
-            {/* Curtain animation */}
+            {/* Curtain animation - now starts open and closes */}
             {showCurtains && (
               <div className="absolute inset-0 flex">
                 <div 
                   className={`w-1/2 h-full bg-red-900 transform transition-all duration-1500 ${
-                    curtainsOpening ? '-translate-x-full' : 'translate-x-0'
+                    curtainsClosed ? 'translate-x-0' : '-translate-x-full'
                   }`}
                   style={{ 
                     backgroundImage: 'linear-gradient(to right, #8B0000, #5A0000)',
@@ -185,7 +183,7 @@ export default function DressingRoom({ product, onClose }: DressingRoomProps) {
                 ></div>
                 <div 
                   className={`w-1/2 h-full bg-red-900 transform transition-all duration-1500 ${
-                    curtainsOpening ? 'translate-x-full' : 'translate-x-0'
+                    curtainsClosed ? 'translate-x-0' : 'translate-x-full'
                   }`}
                   style={{ 
                     backgroundImage: 'linear-gradient(to left, #8B0000, #5A0000)',
