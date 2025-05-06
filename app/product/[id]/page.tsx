@@ -13,6 +13,7 @@ export default function ProductPage() {
   const productId = Number(params.id);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [isVisible, setIsVisible] = useState(false);
+  const [activeTab, setActiveTab] = useState('details');
 
   const { data: product, isLoading } = trpc.products.getById.useQuery(
     { id: productId },
@@ -97,7 +98,7 @@ export default function ProductPage() {
         </div>
 
         {/* Image carousel */}
-        <div className="relative h-[50vh] bg-gray-100">
+        <div className="relative h-[40vh] bg-gray-100">
           {product.images && product.images.length > 0 && (
             <div className="relative h-full">
               {product.images.map((image, index) => (
@@ -155,35 +156,82 @@ export default function ProductPage() {
           <h1 className="text-2xl font-bold mb-2">{product.name}</h1>
           <p className="text-xl font-semibold mb-4">{product.price}د.إ</p>
           
+          {/* Add to cart and wishlist buttons */}
           <div className="mb-6">
-            <h2 className="text-lg font-medium mb-2">Collections</h2>
-            <div className="flex flex-wrap gap-2">
-              {product.collections.map((collection, index) => (
-                <Link 
-                  key={index} 
-                  href={`/collections/${encodeURIComponent(collection)}`}
-                  className="inline-block px-3 py-1 bg-gray-100 rounded-full text-sm"
-                >
-                  {collection}
-                </Link>
-              ))}
-            </div>
+            <button className="w-full py-3 bg-black text-white rounded-md font-medium mb-3">
+              Add to Cart
+            </button>
+            
+            <button className="w-full py-3 border border-black rounded-md font-medium mb-4">
+              Add to Wishlist
+            </button>
           </div>
           
-          <div className="mb-6">
-            <h2 className="text-lg font-medium mb-2">Category</h2>
-            <span className="inline-block px-3 py-1 bg-gray-100 rounded-full text-sm">
-              {product.category === 'men' ? 'Men\'s' : 'Women\'s'}
-            </span>
+          {/* Tabs navigation */}
+          <div className="flex border-b mb-4">
+            <button 
+              onClick={() => setActiveTab('details')}
+              className={`pb-2 px-4 ${activeTab === 'details' 
+                ? 'border-b-2 border-black font-medium' 
+                : 'text-gray-500'}`}
+            >
+              Details
+            </button>
+            <button 
+              onClick={() => setActiveTab('collections')}
+              className={`pb-2 px-4 ${activeTab === 'collections' 
+                ? 'border-b-2 border-black font-medium' 
+                : 'text-gray-500'}`}
+            >
+              Collections
+            </button>
+            <button 
+              onClick={() => setActiveTab('category')}
+              className={`pb-2 px-4 ${activeTab === 'category' 
+                ? 'border-b-2 border-black font-medium' 
+                : 'text-gray-500'}`}
+            >
+              Category
+            </button>
           </div>
           
-          <button className="w-full py-3 bg-black text-white rounded-md font-medium mb-3">
-            Add to Cart
-          </button>
-          
-          <button className="w-full py-3 border border-black rounded-md font-medium">
-            Add to Wishlist
-          </button>
+          {/* Tab content */}
+          <div className="tab-content">
+            {activeTab === 'details' && (
+              <div>
+                <p>
+                  A beautiful {product.name.toLowerCase()} designed for comfort and style. 
+                  Perfect for any occasion.
+                </p>
+              </div>
+            )}
+            
+            {activeTab === 'collections' && (
+              <div>
+                <h2 className="text-lg font-medium mb-2">Collections</h2>
+                <div className="flex flex-wrap gap-2">
+                  {product.collections.map((collection, index) => (
+                    <Link 
+                      key={index} 
+                      href={`/collections/${encodeURIComponent(collection)}`}
+                      className="inline-block px-3 py-1 bg-gray-100 rounded-full text-sm"
+                    >
+                      {collection}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {activeTab === 'category' && (
+              <div>
+                <h2 className="text-lg font-medium mb-2">Category</h2>
+                <span className="inline-block px-3 py-1 bg-gray-100 rounded-full text-sm">
+                  {product.category === 'men' ? 'Men\'s' : 'Women\'s'}
+                </span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
