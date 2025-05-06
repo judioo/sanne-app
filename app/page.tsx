@@ -45,6 +45,7 @@ export default function Home() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);
   const isInitialLoad = useRef(cachedProducts.length === 0);
+  const isProcessingData = useRef(false);
   
   // Memoize query input to prevent unnecessary refetches
   const queryInput = useMemo(() => ({
@@ -56,10 +57,10 @@ export default function Home() {
     limit: 12,
   }), [category, sortBy, searchTerm, currentPage]);
   
-  // Fetch all collections for the side menu
+  // Fetch all collections for the side menu - with caching
   const { data: collections = [] } = trpc.products.getCollections.useQuery();
 
-  // Fetch products using tRPC with pagination
+  // Fetch products using tRPC with pagination - optimized with conditions
   const { data: productData, isLoading, isFetching } = trpc.products.getAll.useQuery(queryInput, {
     // Only run the query if we need to fetch data (initial load or filter change)
     enabled: isInitialLoad.current || 
@@ -69,37 +70,55 @@ export default function Home() {
              currentPage > cachedPage
   });
   
-  // Handle product data changes efficiently
+  // Optimized handling of product data changes with better performance
   useEffect(() => {
-    if (productData) {
-      let newProducts: ProductType[];
+    // Avoid processing if we've already started or don't have data
+    if (isProcessingData.current || !productData) return;
+    
+    try {
+      // Mark as processing to prevent re-entrancy
+      isProcessingData.current = true;
       
-      if (currentPage === 1 || 
-          category !== cachedCategory || 
-          sortBy !== cachedSortBy || 
-          searchTerm !== cachedSearchTerm) {
-        // Replace products on first page or when filters change
-        newProducts = productData.products;
-      } else {
-        // Append products for subsequent pages
-        newProducts = [...allProducts, ...productData.products];
+      // Fast path optimization - if this is a subsequent page with no filter changes
+      if (currentPage > 1 && 
+          category === cachedCategory && 
+          sortBy === cachedSortBy && 
+          searchTerm === cachedSearchTerm) {
+        
+        // Directly append products without creating intermediate arrays
+        setAllProducts(prev => [...prev, ...productData.products]);
+        setHasMore(productData.pagination.hasMore);
+        
+        // Only update the cached page
+        cachedPage = currentPage;
+      } 
+      // Filter change path - reset and replace all products
+      else if (currentPage === 1 || 
+               category !== cachedCategory || 
+               sortBy !== cachedSortBy || 
+               searchTerm !== cachedSearchTerm) {
+               
+        // Update all states in a batch
+        setAllProducts(productData.products);
+        setHasMore(productData.pagination.hasMore);
+        
+        // Update cache values
+        cachedProducts = productData.products;
+        cachedCategory = category;
+        cachedSortBy = sortBy;
+        cachedSearchTerm = searchTerm;
+        cachedPage = currentPage;
       }
       
-      // Update cached values
-      cachedProducts = newProducts;
-      cachedCategory = category;
-      cachedSortBy = sortBy;
-      cachedSearchTerm = searchTerm;
-      cachedPage = currentPage;
+      // Always mark initial load as complete
       isInitialLoad.current = false;
-      
-      // Update state
-      setAllProducts(newProducts);
-      setHasMore(productData.pagination.hasMore);
+    } finally {
+      // Always reset processing flag when done
+      isProcessingData.current = false;
     }
-  }, [productData, currentPage, category, sortBy, searchTerm, allProducts]);
+  }, [productData, currentPage, category, sortBy, searchTerm]);
   
-  // Reset pagination when filters change
+  // Reset pagination when filters change - separated from data processing for better performance
   useEffect(() => {
     if ((category !== cachedCategory) || 
         (sortBy !== cachedSortBy) || 
@@ -150,18 +169,18 @@ export default function Home() {
         cachedPage = page;
       }
     }
-  }, [searchParams, isInitialLoad]);
+  }, [searchParams]);
 
   // Intersection Observer for infinite scrolling with better performance
   const lastProductElementRef = useCallback((node: HTMLDivElement | null) => {
-    if (isLoading || isFetching) return;
+    if (isLoading || isFetching || !hasMore) return;
     
     if (observerRef.current) {
       observerRef.current.disconnect();
     }
     
     observerRef.current = new IntersectionObserver(entries => {
-      if (entries[0].isIntersecting && hasMore) {
+      if (entries[0].isIntersecting && hasMore && !isProcessingData.current) {
         setCurrentPage(prevPage => prevPage + 1);
       }
     }, { 
