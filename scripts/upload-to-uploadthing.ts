@@ -1,3 +1,7 @@
+// Load environment variables from .env file
+import * as dotenv from 'dotenv';
+dotenv.config();
+
 // Mock type for Uploadthing SDK while not installed
 // This allows the script to be type-checked without installing uploadthing
 type UTApiOptions = {
@@ -21,8 +25,8 @@ import * as path from 'path';
  * Script to upload product images to uploadthing and update product data
  * 
  * Usage: 
- * 1. Install dependencies: pnpm add uploadthing
- * 2. Set your UPLOADTHING_TOKEN in .env
+ * 1. Install dependencies: pnpm add uploadthing dotenv
+ * 2. Set your UPLOADTHING_TOKEN in .env file
  * 3. Run with: pnpx tsx scripts/upload-to-uploadthing.ts
  */
 
@@ -41,6 +45,14 @@ type UploadthingResponse = {
   };
 };
 
+// Check for required environment variables
+if (!process.env.UPLOADTHING_TOKEN) {
+  console.error('❌ UPLOADTHING_TOKEN environment variable is not set');
+  console.log('Please set your UPLOADTHING_TOKEN in .env file');
+  console.log('Example .env file content: UPLOADTHING_TOKEN=your_token_here');
+  process.exit(1);
+}
+
 // Only use the real UTApi when the script is actually running
 // This allows the script to be type-checked without the package installed
 let utapi: UTApi;
@@ -51,12 +63,15 @@ try {
   utapi = new ActualUTApi({
     apiKey: process.env.UPLOADTHING_TOKEN,
   });
+  console.log('✅ UTApi initialized with token');
 } catch (error) {
   // During development/type checking, use the mock
   utapi = new UTApi({
     apiKey: process.env.UPLOADTHING_TOKEN,
   });
   console.warn('Using mock UTApi - make sure to install uploadthing before running');
+  console.error(error);
+  process.exit(1);
 }
 
 // Type for mapping product IDs to upload URLs

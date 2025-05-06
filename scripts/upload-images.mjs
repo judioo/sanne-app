@@ -2,21 +2,43 @@
 import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
+import { existsSync, writeFileSync } from 'fs';
 
 // Get the directory of the current script
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Check if uploadthing is installed
-try {
-  execSync('pnpm list uploadthing');
-  console.log('✅ uploadthing package found');
-} catch (error) {
-  console.log('⚠️ uploadthing package not found. Installing...');
+// Check if .env file exists, create it if not
+const envPath = resolve(__dirname, '../.env');
+if (!existsSync(envPath)) {
+  console.log('⚠️ .env file not found. Creating a template .env file...');
+  writeFileSync(envPath, 'UPLOADTHING_TOKEN=your_token_here\n');
+  console.log(`✅ Template .env file created at ${envPath}`);
+  console.log('Please edit this file and add your actual UPLOADTHING_TOKEN before running again.');
+  process.exit(1);
+}
+
+// Check if required packages are installed
+const requiredPackages = ['uploadthing', 'dotenv'];
+const missingPackages = [];
+
+for (const pkg of requiredPackages) {
   try {
-    execSync('pnpm add uploadthing', { stdio: 'inherit' });
-    console.log('✅ uploadthing installed successfully');
+    execSync(`pnpm list ${pkg}`);
+    console.log(`✅ ${pkg} package found`);
+  } catch (error) {
+    console.log(`⚠️ ${pkg} package not found. Will install.`);
+    missingPackages.push(pkg);
+  }
+}
+
+// Install missing packages
+if (missingPackages.length > 0) {
+  console.log(`Installing missing packages: ${missingPackages.join(', ')}...`);
+  try {
+    execSync(`pnpm add ${missingPackages.join(' ')}`, { stdio: 'inherit' });
+    console.log('✅ Packages installed successfully');
   } catch (installError) {
-    console.error('❌ Failed to install uploadthing', installError);
+    console.error('❌ Failed to install packages', installError);
     process.exit(1);
   }
 }
