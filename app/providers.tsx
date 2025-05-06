@@ -3,7 +3,7 @@
 import posthog from 'posthog-js'
 import { PostHogProvider as OriginalPostHogProvider } from 'posthog-js/react'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { useEffect } from 'react'
+import { useEffect, Suspense } from 'react'
 
 if (typeof window !== 'undefined') {
   posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY as string, {
@@ -16,7 +16,8 @@ if (typeof window !== 'undefined') {
   })
 }
 
-export function PostHogProvider({ children }: { children: React.ReactNode }) {
+// Create a client component that uses the hooks
+function PostHogPageViewTracker() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
 
@@ -31,6 +32,23 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
       })
     }
   }, [pathname, searchParams])
+  
+  return null
+}
 
-  return <OriginalPostHogProvider client={posthog}>{children}</OriginalPostHogProvider>
+// Add a fallback component
+function PostHogFallback() {
+  return null // Empty fallback for the Suspense boundary
+}
+
+// Main provider component
+export function PostHogProvider({ children }: { children: React.ReactNode }) {
+  return (
+    <OriginalPostHogProvider client={posthog}>
+      <Suspense fallback={<PostHogFallback />}>
+        <PostHogPageViewTracker />
+      </Suspense>
+      {children}
+    </OriginalPostHogProvider>
+  )
 }
