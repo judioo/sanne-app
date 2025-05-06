@@ -326,7 +326,7 @@ export default function Home() {
         {!isLoading && (
           <div className="grid grid-cols-2 gap-4">
             {products.map((product) => (
-              <div key={product.id} className="mb-6">
+              <Link key={product.id} href={`/product/${product.id}`} className="block mb-6">
                 <div className="bg-gray-100 aspect-[3/4] mb-2 relative overflow-hidden">
                   {/* Product image with hover effect for second image */}
                   {product.images && product.images.length > 0 && (
@@ -357,7 +357,7 @@ export default function Home() {
                 </div>
                 <h3 className="text-sm font-medium">{product.name}</h3>
                 <p className="text-sm mt-1 font-bold">{product.price}د.إ</p>
-              </div>
+              </Link>
             ))}
           </div>
         )}
