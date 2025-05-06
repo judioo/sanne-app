@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { XMarkIcon, CameraIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, CameraIcon, TrashIcon } from '@heroicons/react/24/outline';
 
 type TryOnItem = {
   productId: number;
@@ -19,6 +19,7 @@ type TryOnListProps = {
 
 export default function TryOnList({ onClose }: TryOnListProps) {
   const [tryOnItems, setTryOnItems] = useState<TryOnItem[]>([]);
+  const [showConfirmation, setShowConfirmation] = useState(false);
   const router = useRouter();
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -119,6 +120,27 @@ export default function TryOnList({ onClose }: TryOnListProps) {
     }
   };
 
+  // Clear all try-on items
+  const clearAllItems = () => {
+    // Remove all try-on items from localStorage
+    localStorage.removeItem('tryOnItems');
+    // Update state
+    setTryOnItems([]);
+    // Hide confirmation dialog
+    setShowConfirmation(false);
+  };
+
+  // Show confirmation dialog
+  const showClearConfirmation = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowConfirmation(true);
+  };
+
+  // Hide confirmation dialog
+  const hideClearConfirmation = () => {
+    setShowConfirmation(false);
+  };
+
   if (tryOnItems.length === 0) {
     return (
       <div 
@@ -139,13 +161,46 @@ export default function TryOnList({ onClose }: TryOnListProps) {
     >
       <div className="p-3 border-b flex justify-between items-center">
         <h3 className="font-medium">Your Try-On Items</h3>
-        <button 
-          onClick={onClose}
-          className="text-gray-500 p-1"
-        >
-          <XMarkIcon className="h-5 w-5" />
-        </button>
+        <div className="flex items-center">
+          <button 
+            onClick={showClearConfirmation}
+            className="text-gray-500 p-1 mr-1 hover:text-red-500 transition-colors"
+            title="Clear all items"
+          >
+            <TrashIcon className="h-5 w-5" />
+          </button>
+          <button 
+            onClick={onClose}
+            className="text-gray-500 p-1"
+          >
+            <XMarkIcon className="h-5 w-5" />
+          </button>
+        </div>
       </div>
+      
+      {/* Confirmation dialog */}
+      {showConfirmation && (
+        <div className="p-3 bg-red-50 border-b">
+          <p className="text-sm text-red-700 mb-2">
+            Clear all try-on items?
+          </p>
+          <div className="flex justify-end space-x-2">
+            <button 
+              onClick={hideClearConfirmation}
+              className="px-3 py-1 text-xs bg-gray-200 hover:bg-gray-300 rounded"
+            >
+              Cancel
+            </button>
+            <button 
+              onClick={clearAllItems}
+              className="px-3 py-1 text-xs bg-red-500 hover:bg-red-600 text-white rounded"
+            >
+              Clear All
+            </button>
+          </div>
+        </div>
+      )}
+      
       <div className="max-h-80 overflow-y-auto">
         {tryOnItems.map((item) => (
           <div 
