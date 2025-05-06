@@ -1,14 +1,16 @@
 import { z } from 'zod';
-import { publicProcedure, router } from '../trpc';
-import { products } from '../product-data';
+import { router, publicProcedure } from '../trpc';
+import { products, getAllCollections } from '../product-data';
 
-export const productRouter = router({
+export const productsRouter = router({
+  // Get all products with optional filtering
   getAll: publicProcedure
     .input(
       z.object({
         category: z.enum(['all', 'men', 'women']).optional().default('all'),
         sortBy: z.enum(['price_asc', 'price_desc']).optional(),
         search: z.string().optional(),
+        collection: z.string().optional(),
       })
     )
     .query(({ input }) => {
@@ -18,6 +20,14 @@ export const productRouter = router({
       if (input.category !== 'all') {
         filteredProducts = filteredProducts.filter(
           (product) => product.category === input.category
+        );
+      }
+
+      // Filter by collection if provided
+      if (input.collection) {
+        const collectionName = input.collection;
+        filteredProducts = filteredProducts.filter((product) =>
+          product.collections.includes(collectionName)
         );
       }
 
@@ -39,13 +49,15 @@ export const productRouter = router({
       return filteredProducts;
     }),
 
+  // Get all available collections
+  getCollections: publicProcedure.query(() => {
+    return getAllCollections();
+  }),
+  
+  // Get product by ID
   getById: publicProcedure
     .input(z.object({ id: z.number() }))
     .query(({ input }) => {
-      const product = products.find((p) => p.id === input.id);
-      if (!product) {
-        throw new Error(`Product with ID ${input.id} not found`);
-      }
-      return product;
+      return products.find((product) => product.id === input.id);
     }),
 });

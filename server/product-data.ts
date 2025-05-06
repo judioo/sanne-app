@@ -1,14 +1,19 @@
-// Product data model
-export interface Product {
-  id: number;
-  name: string;
-  price: string;
-  numericPrice: number; // For sorting purposes
-  image: string;
-  category: 'men' | 'women';
-}
+import { z } from 'zod';
 
-// Product data
+// Product schema
+export const ProductSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  price: z.string(),
+  numericPrice: z.number(),
+  image: z.string(),
+  category: z.enum(['men', 'women']),
+  collections: z.array(z.string()),
+});
+
+export type Product = z.infer<typeof ProductSchema>;
+
+// Sample product data
 export const products: Product[] = [
   {
     id: 1,
@@ -17,6 +22,7 @@ export const products: Product[] = [
     numericPrice: 5985,
     image: "/product-images/green-dress.jpg",
     category: "women",
+    collections: ["New Arrivals", "Summer Essentials", "Bestsellers"],
   },
   {
     id: 2,
@@ -25,6 +31,7 @@ export const products: Product[] = [
     numericPrice: 5090,
     image: "/product-images/luna-dress.jpg",
     category: "women",
+    collections: ["New Arrivals", "Evening Wear", "Luxury"],
   },
   {
     id: 3,
@@ -33,6 +40,7 @@ export const products: Product[] = [
     numericPrice: 4030,
     image: "/product-images/azul-jeans.jpg",
     category: "men",
+    collections: ["New Arrivals", "Denim", "Casual"],
   },
   {
     id: 4,
@@ -41,6 +49,7 @@ export const products: Product[] = [
     numericPrice: 5970,
     image: "/product-images/indigo-skirt.jpg",
     category: "women",
+    collections: ["New Arrivals", "Summer Essentials"],
   },
   {
     id: 5,
@@ -49,6 +58,7 @@ export const products: Product[] = [
     numericPrice: 4685,
     image: "/product-images/bohemian-skirt.jpg",
     category: "women",
+    collections: ["New Arrivals", "Boho Chic"],
   },
   {
     id: 6,
@@ -57,6 +67,7 @@ export const products: Product[] = [
     numericPrice: 2400,
     image: "/product-images/backless-top.jpg",
     category: "women",
+    collections: ["New Arrivals", "Summer Essentials", "Beach Wear"],
   },
   {
     id: 7,
@@ -65,6 +76,7 @@ export const products: Product[] = [
     numericPrice: 3585,
     image: "/product-images/corset-top.jpg",
     category: "women",
+    collections: ["New Arrivals", "Trending Now"],
   },
   {
     id: 8,
@@ -73,6 +85,7 @@ export const products: Product[] = [
     numericPrice: 9525,
     image: "/product-images/leather-jacket.jpg",
     category: "men",
+    collections: ["New Arrivals", "Luxury", "Outerwear"],
   },
   {
     id: 9,
@@ -81,6 +94,7 @@ export const products: Product[] = [
     numericPrice: 3250,
     image: "/product-images/oxford-shirt.jpg",
     category: "men",
+    collections: ["New Arrivals", "Essentials", "Workwear"],
   },
   {
     id: 10,
@@ -89,5 +103,19 @@ export const products: Product[] = [
     numericPrice: 4150,
     image: "/product-images/chinos.jpg",
     category: "men",
+    collections: ["New Arrivals", "Denim", "Casual"],
   },
 ];
+
+// Function to get all available collections
+export function getAllCollections(): string[] {
+  const collectionsSet = new Set<string>();
+  
+  products.forEach(product => {
+    product.collections.forEach(collection => {
+      collectionsSet.add(collection);
+    });
+  });
+  
+  return Array.from(collectionsSet).sort();
+}

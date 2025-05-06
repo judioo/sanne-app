@@ -1,30 +1,23 @@
 'use client'
 
-import Image from "next/image";
 import { useState, useEffect, useRef } from "react";
-import { trpc } from "../utils/trpc";
+import Image from "next/image";
 import Link from "next/link";
+import { trpc } from "../../../utils/trpc";
 
-export default function Home() {
+export default function CollectionLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const [isMobile, setIsMobile] = useState(true);
-  const [category, setCategory] = useState<'all' | 'men' | 'women'>('all');
-  const [sortBy, setSortBy] = useState<'price_asc' | 'price_desc' | undefined>(undefined);
-  const [searchTerm, setSearchTerm] = useState("");
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
   
   // Fetch all collections for the side menu
   const { data: collections = [] } = trpc.products.getCollections.useQuery();
-
-  // Fetch products using tRPC
-  const { data: products = [], isLoading } = trpc.products.getAll.useQuery({
-    category,
-    sortBy,
-    search: searchTerm,
-    collection: "New Arrivals", // Default to showing New Arrivals on the home page
-  });
 
   useEffect(() => {
     // Check if the device is mobile
@@ -106,7 +99,7 @@ export default function Home() {
             </svg>
           </button>
           
-          <div className="flex-1 flex justify-center">
+          <Link href="/" className="flex-1 flex justify-center">
             <Image
               src="/sanne-transparent.png"
               alt="Sanne Logo"
@@ -115,7 +108,7 @@ export default function Home() {
               priority
               className="mx-auto"
             />
-          </div>
+          </Link>
           
           <div className="flex gap-2">
             <button 
@@ -237,115 +230,9 @@ export default function Home() {
         </div>
       )}
 
-      {/* Category Tabs */}
-      <div className="flex justify-center p-4 border-b">
-        <div className="flex space-x-6">
-          <button 
-            className={`pb-2 ${category === 'all' ? 'font-bold border-b-2 border-black' : 'text-gray-500'}`}
-            onClick={() => setCategory('all')}
-          >
-            All
-          </button>
-          <button 
-            className={`pb-2 ${category === 'women' ? 'font-bold border-b-2 border-black' : 'text-gray-500'}`}
-            onClick={() => setCategory('women')}
-          >
-            Women
-          </button>
-          <button 
-            className={`pb-2 ${category === 'men' ? 'font-bold border-b-2 border-black' : 'text-gray-500'}`}
-            onClick={() => setCategory('men')}
-          >
-            Men
-          </button>
-        </div>
-      </div>
-
-      {/* New Arrivals Section */}
-      <main className="flex-1 p-4">
-        <h2 className="text-2xl font-bold text-center mb-6">New Arrivals</h2>
-        
-        {/* Filter & Sort Button */}
-        <div className="flex justify-end mb-4">
-          <button 
-            className="flex items-center text-sm"
-            onClick={() => setIsFilterOpen(!isFilterOpen)}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4 mr-1">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75" />
-            </svg>
-            Filter & Sort
-          </button>
-        </div>
-
-        {/* Filter & Sort Panel */}
-        {isFilterOpen && (
-          <div className="mb-6 p-4 bg-gray-50 rounded-md animate-fade-in">
-            <h3 className="font-medium mb-3">Sort by Price</h3>
-            <div className="flex flex-col gap-2">
-              <label className="flex items-center">
-                <input
-                  type="radio"
-                  name="sort"
-                  checked={sortBy === 'price_asc'}
-                  onChange={() => setSortBy('price_asc')}
-                  className="mr-2"
-                />
-                Price: Low to High
-              </label>
-              <label className="flex items-center">
-                <input
-                  type="radio"
-                  name="sort"
-                  checked={sortBy === 'price_desc'}
-                  onChange={() => setSortBy('price_desc')}
-                  className="mr-2"
-                />
-                Price: High to Low
-              </label>
-              {sortBy && (
-                <button 
-                  className="text-sm text-blue-600 mt-2"
-                  onClick={() => setSortBy(undefined)}
-                >
-                  Clear Sort
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-        
-        {/* Loading State */}
-        {isLoading && (
-          <div className="flex justify-center items-center py-10">
-            <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-gray-900"></div>
-          </div>
-        )}
-        
-        {/* Product Grid */}
-        {!isLoading && (
-          <div className="grid grid-cols-2 gap-4">
-            {products.map((product) => (
-              <div key={product.id} className="mb-6">
-                <div className="bg-gray-100 aspect-[3/4] mb-2 relative">
-                  {/* Placeholder for product image */}
-                  <div className="absolute inset-0 flex items-center justify-center text-gray-400">
-                    {product.name}
-                  </div>
-                </div>
-                <h3 className="text-sm font-medium">{product.name}</h3>
-                <p className="text-sm mt-1 font-bold">{product.price}د.إ</p>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* No Results */}
-        {!isLoading && products.length === 0 && (
-          <div className="text-center py-10">
-            <p className="text-gray-500">No products found</p>
-          </div>
-        )}
+      {/* Main Content */}
+      <main className="flex-1">
+        {children}
       </main>
     </div>
   );
