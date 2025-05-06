@@ -206,7 +206,7 @@ export default function DressingRoom({ product, onClose }: DressingRoomProps) {
                 onMouseDown={handlePhotoIconTouchStart}
                 onMouseUp={handlePhotoIconTouchEnd}
                 onMouseLeave={handlePhotoIconTouchEnd}
-                className="p-3 bg-black text-white rounded-full shadow-lg"
+                className="p-3 bg-[#a1a561] text-white rounded-full shadow-lg"
               >
                 <CameraIcon className="h-6 w-6" />
               </button>
@@ -215,7 +215,7 @@ export default function DressingRoom({ product, onClose }: DressingRoomProps) {
               {showTooltip && (
                 <div 
                   ref={tooltipRef}
-                  className="absolute bottom-full right-0 mb-2 w-64 p-3 bg-black text-white rounded-lg shadow-lg transform origin-bottom-right transition-all duration-300"
+                  className="absolute bottom-full right-0 mb-2 w-64 p-3 bg-[#a1a561] text-white rounded-lg shadow-lg transform origin-bottom-right transition-all duration-300"
                   style={{
                     animation: 'fadeIn 0.3s ease-out, scaleIn 0.3s ease-out',
                   }}
@@ -238,7 +238,7 @@ export default function DressingRoom({ product, onClose }: DressingRoomProps) {
                       Hold this button to see this tip again
                     </p>
                     {/* Triangle pointer */}
-                    <div className="absolute bottom-[-12px] right-3 w-0 h-0 border-l-[6px] border-l-transparent border-t-[12px] border-t-black border-r-[6px] border-r-transparent"></div>
+                    <div className="absolute bottom-[-12px] right-3 w-0 h-0 border-l-[6px] border-l-transparent border-t-[12px] border-t-[#a1a561] border-r-[6px] border-r-transparent"></div>
                   </div>
                 </div>
               )}
@@ -259,10 +259,10 @@ export default function DressingRoom({ product, onClose }: DressingRoomProps) {
         <div className="mb-10">
           <button 
             onClick={goToDressingRoom}
-            className="w-full py-4 bg-black text-white rounded-md font-medium relative overflow-hidden group"
+            className="w-full py-4 bg-[#a1a561] text-white rounded-md font-medium relative overflow-hidden group"
           >
             <span className="relative z-10">To The Dressing Room</span>
-            <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-indigo-600 
+            <div className="absolute inset-0 bg-gradient-to-r from-[#b1b571] to-[#91954f] 
                           opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
           </button>
         </div>
