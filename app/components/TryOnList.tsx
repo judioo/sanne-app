@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { XMarkIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, CameraIcon } from '@heroicons/react/24/outline';
 
 type TryOnItem = {
   productId: number;
@@ -88,8 +88,8 @@ export default function TryOnList({ onClose }: TryOnListProps) {
     };
   }, [onClose]);
 
-  // Navigate to product page
-  const navigateToProduct = (productId: number) => {
+  // Navigate to dressing room for the product
+  const navigateToDressingRoom = (productId: number) => {
     router.push(`/product/${productId}`);
     onClose();
   };
@@ -147,18 +147,37 @@ export default function TryOnList({ onClose }: TryOnListProps) {
           <div 
             key={item.productId} 
             className="p-3 border-b last:border-b-0 hover:bg-gray-50 cursor-pointer"
-            onClick={() => navigateToProduct(item.productId)}
+            onClick={() => navigateToDressingRoom(item.productId)}
           >
-            <div className="flex items-start mb-2">
-              <div className="flex-1">
-                <h4 className="font-medium text-sm mb-1">{item.productName}</h4>
+            <div className="flex items-center space-x-3">
+              {/* Small product avatar */}
+              <div className="w-10 h-10 bg-gray-100 rounded-md relative flex-shrink-0 overflow-hidden">
+                {item.status === 'ready' ? (
+                  // Ready items show the processed image avatar
+                  <Image 
+                    src={item.imageUrl || '/lena-with-clothes.jpeg'} 
+                    alt={`Try on of ${item.productName}`}
+                    fill
+                    className="object-cover"
+                  />
+                ) : (
+                  // Pending items show a spinner
+                  <div className="w-full h-full flex items-center justify-center">
+                    <div className="animate-spin h-5 w-5 border-2 border-[#a1a561] border-t-transparent rounded-full"></div>
+                  </div>
+                )}
+              </div>
+              
+              {/* Product info */}
+              <div className="flex-1 min-w-0">
+                <h4 className="font-medium text-sm mb-1 truncate">{item.productName}</h4>
                 <div className="flex items-center">
                   {item.status === 'pending' ? (
-                    <span className="px-2 py-1 text-xs bg-yellow-100 text-yellow-800 rounded-full">
+                    <span className="px-2 py-0.5 text-xs bg-yellow-100 text-yellow-800 rounded-full">
                       Processing
                     </span>
                   ) : (
-                    <span className="px-2 py-1 text-xs bg-green-100 text-green-800 rounded-full">
+                    <span className="px-2 py-0.5 text-xs bg-green-100 text-green-800 rounded-full">
                       Ready
                     </span>
                   )}
@@ -167,6 +186,8 @@ export default function TryOnList({ onClose }: TryOnListProps) {
                   </span>
                 </div>
               </div>
+              
+              {/* Clear button */}
               <button 
                 onClick={(e) => clearItem(e, item.productId)}
                 className="text-gray-400 hover:text-gray-600 p-1"
@@ -174,40 +195,6 @@ export default function TryOnList({ onClose }: TryOnListProps) {
                 <XMarkIcon className="h-4 w-4" />
               </button>
             </div>
-            
-            {item.status === 'ready' && item.imageUrl && (
-              <div 
-                className="relative w-full aspect-[3/4] bg-gray-100 rounded overflow-hidden"
-              >
-                <Image 
-                  src={item.imageUrl} 
-                  alt={`Try on of ${item.productName}`}
-                  fill
-                  className="object-cover"
-                />
-                <div className="absolute inset-0 bg-black bg-opacity-10 hover:bg-opacity-0 transition-all duration-200 flex items-center justify-center">
-                  <span className="bg-white bg-opacity-80 px-3 py-1 rounded-full text-xs">
-                    View Product
-                  </span>
-                </div>
-              </div>
-            )}
-            
-            {item.status === 'pending' && (
-              <div 
-                className="w-full aspect-[3/4] bg-gray-100 rounded flex items-center justify-center"
-              >
-                <div className="text-center p-4">
-                  <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-[#a1a561] mx-auto mb-3"></div>
-                  <p className="text-sm text-gray-500">
-                    Processing your image
-                  </p>
-                  <p className="text-xs text-gray-400 mt-2">
-                    Click to view product
-                  </p>
-                </div>
-              </div>
-            )}
           </div>
         ))}
       </div>
