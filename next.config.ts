@@ -4,6 +4,18 @@ const nextConfig: NextConfig = {
   /* config options here */
   reactStrictMode: true,
 
+  // Configure allowed image domains
+  images: {
+    domains: ['sanne.com'],
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'sanne.com',
+        pathname: '/web/image/**',
+      },
+    ],
+  },
+
   async rewrites() {
     return [
       {
