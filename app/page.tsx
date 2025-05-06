@@ -395,13 +395,13 @@ function HomeContent() {
     <div className="flex flex-col min-h-screen">
       {/* Header */}
       <header className="sticky top-0 bg-white z-10 shadow-sm">
-        <div className="flex justify-between items-center p-4">
+        <div className="flex justify-between items-center py-2 px-4">
           <button 
             id="menu-button"
             className="text-gray-700"
             onClick={() => setIsMenuOpen(!isMenuOpen)}
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
@@ -410,8 +410,8 @@ function HomeContent() {
             <Image
               src="/sanne-transparent.png"
               alt="Sanne Logo"
-              width={120}
-              height={40}
+              width={100}
+              height={33}
               priority
             />
           </div>
@@ -421,7 +421,7 @@ function HomeContent() {
               className="text-gray-700"
               onClick={() => setIsSearchOpen(!isSearchOpen)}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </button>
@@ -431,7 +431,7 @@ function HomeContent() {
                 className="text-gray-700 relative"
               >
                 {/* Garment icon with notification dot */}
-                <GarmentIcon color={garmentColor} className="h-6 w-6" />
+                <GarmentIcon color={garmentColor} className="h-5 w-5" />
                 
                 {/* Notification dot for pending try-on */}
                 {hasPendingTryOn && (
