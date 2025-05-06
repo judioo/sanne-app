@@ -18,6 +18,7 @@ export default function DressingRoom({ product, onClose }: DressingRoomProps) {
   const [tooltipTimeout, setTooltipTimeout] = useState<NodeJS.Timeout | null>(null);
   const [isFirstVisit, setIsFirstVisit] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
   
   // Load saved image from local storage on component mount
   useEffect(() => {
@@ -45,6 +46,29 @@ export default function DressingRoom({ product, onClose }: DressingRoomProps) {
       return () => clearTimeout(timer);
     }
   }, []);
+
+  // Add click outside handler to close tooltip
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (tooltipRef.current && !tooltipRef.current.contains(event.target as Node)) {
+        setShowTooltip(false);
+        if (tooltipTimeout) {
+          clearTimeout(tooltipTimeout);
+          setTooltipTimeout(null);
+        }
+      }
+    };
+
+    // Add event listener when tooltip is shown
+    if (showTooltip) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    
+    // Cleanup
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showTooltip, tooltipTimeout]);
 
   // Handle file selection
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -187,18 +211,32 @@ export default function DressingRoom({ product, onClose }: DressingRoomProps) {
                 <CameraIcon className="h-6 w-6" />
               </button>
               
-              {/* Speech bubble tooltip */}
+              {/* Speech bubble tooltip with animation */}
               {showTooltip && (
-                <div className="absolute bottom-full right-0 mb-2 w-64 p-3 bg-black text-white rounded-lg shadow-lg transform transition-opacity duration-300 animate-fade-in">
+                <div 
+                  ref={tooltipRef}
+                  className="absolute bottom-full right-0 mb-2 w-64 p-3 bg-black text-white rounded-lg shadow-lg transform origin-bottom-right transition-all duration-300"
+                  style={{
+                    animation: 'fadeIn 0.3s ease-out, scaleIn 0.3s ease-out',
+                  }}
+                >
                   <div className="relative">
-                    <p className="text-sm mb-1">
+                    <h3 className="font-medium text-base mb-1">Personalize Your Experience</h3>
+                    <p className="text-sm mb-2">
                       {uploadedImage 
-                        ? "Tap to change your photo"
-                        : "Upload your photo to see how this would look on you!"}
+                        ? "You're using your own photo. Want to try a different one?" 
+                        : "See how this would look on you! Upload your photo for a more personalized experience."}
                     </p>
-                    {!uploadedImage && (
-                      <p className="text-xs text-gray-300">Hold this button to see this tip again</p>
-                    )}
+                    <button 
+                      onClick={triggerFileUpload}
+                      className="flex items-center justify-center w-full py-2 px-3 border border-white/30 rounded-md text-sm hover:bg-white/10 transition"
+                    >
+                      <ArrowUpTrayIcon className="h-4 w-4 mr-2" />
+                      {uploadedImage ? "Change Photo" : "Upload Your Photo"}
+                    </button>
+                    <p className="text-xs text-gray-300 mt-2">
+                      Hold this button to see this tip again
+                    </p>
                     {/* Triangle pointer */}
                     <div className="absolute bottom-[-12px] right-3 w-0 h-0 border-l-[6px] border-l-transparent border-t-[12px] border-t-black border-r-[6px] border-r-transparent"></div>
                   </div>
@@ -217,15 +255,17 @@ export default function DressingRoom({ product, onClose }: DressingRoomProps) {
           />
         </div>
         
-        {/* Dressing room button - Positioned above Selected Item section */}
-        <button 
-          onClick={goToDressingRoom}
-          className="py-4 bg-black text-white rounded-md font-medium relative overflow-hidden group mb-6"
-        >
-          <span className="relative z-10">To The Dressing Room</span>
-          <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-indigo-600 
-                        opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-        </button>
+        {/* Dressing room button - Make sure it's not obscured */}
+        <div className="mb-10">
+          <button 
+            onClick={goToDressingRoom}
+            className="w-full py-4 bg-black text-white rounded-md font-medium relative overflow-hidden group"
+          >
+            <span className="relative z-10">To The Dressing Room</span>
+            <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-indigo-600 
+                          opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+          </button>
+        </div>
         
         {/* Product images */}
         <h2 className="font-medium mb-3">Selected Item</h2>
