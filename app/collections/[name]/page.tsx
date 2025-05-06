@@ -1,12 +1,30 @@
 'use client'
 
 import { useParams } from 'next/navigation';
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { trpc } from '../../../utils/trpc';
 import Image from 'next/image';
 import Link from 'next/link';
 
+// Loading spinner component for suspense fallback
+function LoadingSpinner() {
+  return (
+    <div className="flex justify-center items-center py-10">
+      <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-gray-900"></div>
+      <p className="mt-4 text-gray-600">Loading collection...</p>
+    </div>
+  );
+}
+
 export default function CollectionPage() {
+  return (
+    <Suspense fallback={<LoadingSpinner />}>
+      <CollectionContent />
+    </Suspense>
+  );
+}
+
+function CollectionContent() {
   const params = useParams();
   const collectionName = decodeURIComponent(params.name as string);
   
@@ -14,10 +32,13 @@ export default function CollectionPage() {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   
   // Fetch products in this collection using tRPC
-  const { data: products = [], isLoading } = trpc.products.getAll.useQuery({
+  const { data, isLoading } = trpc.products.getAll.useQuery({
     collection: collectionName,
     sortBy,
   });
+  
+  // Extract products array from the data (data now has products and pagination properties)
+  const products = data?.products || [];
 
   return (
     <div className="flex-1 p-4">
