@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
-import { XMarkIcon, ArrowUpTrayIcon, CameraIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, ArrowUpTrayIcon, CameraIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 
 type DressingRoomProps = {
   product: any; // Product details
@@ -28,10 +28,13 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
   const [showTooltip, setShowTooltip] = useState(false);
   const [tooltipTimeout, setTooltipTimeout] = useState<NodeJS.Timeout | null>(null);
   const [isFirstVisit, setIsFirstVisit] = useState(true);
+  const [tryOnImages, setTryOnImages] = useState<string[]>([]);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [hasReadyTryOns, setHasReadyTryOns] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   
-  // Load saved image from local storage on component mount
+  // Load saved image from local storage and check for ready try-on images
   useEffect(() => {
     const savedImage = localStorage.getItem('userDressingRoomImage');
     if (savedImage) {
@@ -54,14 +57,50 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
       }, 5000);
       
       setTooltipTimeout(timer);
-      return () => clearTimeout(timer);
     }
     
     // If starting with closed curtains, show message immediately
     if (startWithClosedCurtains) {
       setShowMessage(true);
     }
-  }, [startWithClosedCurtains]);
+    
+    // Check for ready try-on images for this product
+    const storedItems = localStorage.getItem('tryOnItems');
+    if (storedItems && product) {
+      try {
+        const items: TryOnItem[] = JSON.parse(storedItems);
+        
+        // Filter for this product's items
+        const productItems = items.filter(item => item.productId === product.id);
+        
+        // Check if all items are ready (and there are items)
+        const allReady = productItems.length > 0 && productItems.every(item => item.status === 'ready');
+        const noPending = !productItems.some(item => item.status === 'pending');
+        
+        // If all items are ready and none pending, collect the images
+        if (allReady && noPending) {
+          const readyImages = productItems
+            .filter(item => item.imageUrl) // Only include items with images
+            .map(item => item.imageUrl as string); // Extract the imageUrl
+          
+          if (readyImages.length > 0) {
+            setTryOnImages(readyImages);
+            setHasReadyTryOns(true);
+            setShowCurtains(false); // Ensure curtains are open for ready try-ons
+            setCurtainsClosed(false);
+          }
+        }
+      } catch (e) {
+        console.error('Error checking try-on items:', e);
+      }
+    }
+    
+    return () => {
+      if (tooltipTimeout) {
+        clearTimeout(tooltipTimeout);
+      }
+    };
+  }, [product, startWithClosedCurtains, tooltipTimeout]);
 
   // Add click outside handler to close tooltip
   useEffect(() => {
@@ -85,6 +124,19 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [showTooltip, tooltipTimeout]);
+
+  // Navigate through try-on images carousel
+  const nextImage = () => {
+    if (tryOnImages.length > 1) {
+      setCurrentImageIndex((prev) => (prev + 1) % tryOnImages.length);
+    }
+  };
+
+  const prevImage = () => {
+    if (tryOnImages.length > 1) {
+      setCurrentImageIndex((prev) => (prev === 0 ? tryOnImages.length - 1 : prev - 1));
+    }
+  };
 
   // Handle file selection
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -248,15 +300,72 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
       <div className="flex-1 overflow-auto p-4 flex flex-col">
         {/* Model image container */}
         <div className="relative w-full aspect-[3/4] bg-gray-100 mb-6">
-          {/* Default or uploaded image */}
+          {/* Default, uploaded image or try-on image carousel */}
           <div className="relative w-full h-full overflow-hidden">
-            <Image 
-              src={uploadedImage || '/lena.jpeg'} 
-              alt="Model" 
-              fill
-              className="object-cover"
-              priority
-            />
+            {hasReadyTryOns && tryOnImages.length > 0 ? (
+              <>
+                {/* Try-on image carousel */}
+                <div className="relative h-full w-full">
+                  {tryOnImages.map((imageUrl, index) => (
+                    <div 
+                      key={index}
+                      className={`absolute inset-0 transition-opacity duration-300 ${
+                        index === currentImageIndex ? 'opacity-100' : 'opacity-0'
+                      }`}
+                    >
+                      <Image 
+                        src={imageUrl} 
+                        alt={`${product.name} try-on ${index + 1}`}
+                        fill
+                        className="object-cover"
+                        priority={index === 0}
+                      />
+                    </div>
+                  ))}
+                  
+                  {/* Carousel controls (only show if multiple images) */}
+                  {tryOnImages.length > 1 && (
+                    <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex justify-between px-4 z-10">
+                      <button 
+                        onClick={prevImage}
+                        className="p-2 rounded-full bg-white/80 shadow-md"
+                      >
+                        <ChevronLeftIcon className="h-6 w-6" />
+                      </button>
+                      <button 
+                        onClick={nextImage}
+                        className="p-2 rounded-full bg-white/80 shadow-md"
+                      >
+                        <ChevronRightIcon className="h-6 w-6" />
+                      </button>
+                    </div>
+                  )}
+                  
+                  {/* Dots indicator for carousel */}
+                  {tryOnImages.length > 1 && (
+                    <div className="absolute bottom-4 inset-x-0 flex justify-center space-x-2 z-10">
+                      {tryOnImages.map((_, index) => (
+                        <button
+                          key={index}
+                          onClick={() => setCurrentImageIndex(index)}
+                          className={`w-2 h-2 rounded-full ${
+                            index === currentImageIndex ? 'bg-white' : 'bg-white/50'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <Image 
+                src={uploadedImage || '/lena.jpeg'} 
+                alt="Model" 
+                fill
+                className="object-cover"
+                priority
+              />
+            )}
             
             {/* Curtain animation - with message bubble */}
             {showCurtains && (
