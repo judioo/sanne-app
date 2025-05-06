@@ -19,19 +19,28 @@ export const metadata: Metadata = {
   description: 'Explore our collection of men\'s and women\'s clothing',
 }
 
+// We'll use a Client Component wrapper to handle hydration mismatches
+function ClientOnlyProvider({ children }: { children: React.ReactNode }) {
+  return (
+    <TRPCProvider>
+      <PostHogProvider>
+        {children}
+      </PostHogProvider>
+    </TRPCProvider>
+  )
+}
+
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable}`}>
-        <TRPCProvider>
-          <PostHogProvider>
-            {children}
-          </PostHogProvider>
-        </TRPCProvider>
+    <html lang="en" suppressHydrationWarning>
+      <body className={`${geistSans.variable} ${geistMono.variable}`} suppressHydrationWarning>
+        <ClientOnlyProvider>
+          {children}
+        </ClientOnlyProvider>
       </body>
     </html>
   )

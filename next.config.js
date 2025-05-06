@@ -1,23 +1,18 @@
 /** @type {import('next').NextConfig} */
 
 const nextConfig = {
-  // Disable strict mode to help with useSearchParams issue in 404 page
-  reactStrictMode: false,
+  // Use standalone output for production deployment
+  output: 'standalone',
   
-  // Add additional configuration as needed
+  // Configure images
   images: {
-    domains: ['cdn.shopify.com'],
+    domains: ['cdn.shopify.com', 'sanne.com'],
   },
   
-  // Disable ESLint during build for now
+  // Disable validation during builds
   eslint: {
     ignoreDuringBuilds: true,
   },
-
-  // Turn off static optimization for _not-found pages
-  output: 'standalone',
-  
-  // Skip type checking during build
   typescript: {
     ignoreBuildErrors: true,
   },
