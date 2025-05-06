@@ -7,6 +7,7 @@ import Link from "next/link";
 import { type inferRouterOutputs } from "@trpc/server";
 import { type AppRouter } from "../server/routers/index";
 import { useRouter, useSearchParams } from "next/navigation";
+import GarmentIcon from "./components/GarmentIcon";
 
 // Define type for product data from tRPC
 type RouterOutput = inferRouterOutputs<AppRouter>;
@@ -62,6 +63,8 @@ function HomeContent() {
   const [currentPage, setCurrentPage] = useState(cachedPage);
   const [allProducts, setAllProducts] = useState<ProductType[]>(cachedProducts);
   const [hasMore, setHasMore] = useState(true);
+  const [hasPendingTryOn, setHasPendingTryOn] = useState(false);
+  const [garmentColor, setGarmentColor] = useState('#a1a561');
   const searchInputRef = useRef<HTMLInputElement>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);
   const isInitialLoad = useRef(cachedProducts.length === 0);
@@ -251,6 +254,55 @@ function HomeContent() {
     };
   }, [isMenuOpen]);
 
+  // Check for pending try-on in localStorage
+  useEffect(() => {
+    const checkPendingTryOn = () => {
+      const pendingTryOn = localStorage.getItem('pendingTryOn');
+      if (pendingTryOn) {
+        try {
+          const tryOnData = JSON.parse(pendingTryOn);
+          // Check if it was created less than 24 hours ago
+          const timestamp = new Date(tryOnData.timestamp);
+          const now = new Date();
+          const hoursSinceCreated = (now.getTime() - timestamp.getTime()) / (1000 * 60 * 60);
+          
+          if (hoursSinceCreated < 24) {
+            setHasPendingTryOn(true);
+            // Get a product from the current list to extract its color
+            const product = allProducts.find(p => p.id === tryOnData.productId);
+            if (product) {
+              // Use the olive green color as default if product is not found
+              setGarmentColor('#a1a561');
+            }
+          } else {
+            // Try-on request is older than 24 hours, remove it
+            localStorage.removeItem('pendingTryOn');
+            setHasPendingTryOn(false);
+          }
+        } catch (e) {
+          console.error('Error parsing pendingTryOn data:', e);
+          localStorage.removeItem('pendingTryOn');
+          setHasPendingTryOn(false);
+        }
+      }
+    };
+    
+    checkPendingTryOn();
+    
+    // Also check on visibility change in case user comes back to the tab
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        checkPendingTryOn();
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [allProducts]);
+
   // Desktop view with QR code
   if (!isMobile) {
     return (
@@ -312,10 +364,14 @@ function HomeContent() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </button>
-            <Link href="/cart" className="text-gray-700">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-              </svg>
+            <Link href="/cart" className="text-gray-700 relative">
+              {/* Replace handbag with garment icon */}
+              <GarmentIcon color={garmentColor} className="h-6 w-6" />
+              
+              {/* Notification dot for pending try-on */}
+              {hasPendingTryOn && (
+                <span className="absolute -top-1 -right-1 bg-red-500 rounded-full w-3 h-3"></span>
+              )}
             </Link>
           </div>
         </div>

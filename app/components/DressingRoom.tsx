@@ -14,6 +14,7 @@ export default function DressingRoom({ product, onClose }: DressingRoomProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [showCurtains, setShowCurtains] = useState(false);
   const [curtainsClosed, setCurtainsClosed] = useState(false);
+  const [showMessage, setShowMessage] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
   const [tooltipTimeout, setTooltipTimeout] = useState<NodeJS.Timeout | null>(null);
   const [isFirstVisit, setIsFirstVisit] = useState(true);
@@ -128,7 +129,7 @@ export default function DressingRoom({ product, onClose }: DressingRoomProps) {
     }
   };
 
-  // Go to dressing room with animation - now starts open and closes permanently
+  // Go to dressing room with animation - now with message and storing try-on info
   const goToDressingRoom = () => {
     // Show curtains in initial open state
     setShowCurtains(true);
@@ -138,7 +139,23 @@ export default function DressingRoom({ product, onClose }: DressingRoomProps) {
     setTimeout(() => {
       setCurtainsClosed(true);
       
-      // Curtains stay closed - no reset
+      // After curtains close, show the message
+      setTimeout(() => {
+        setShowMessage(true);
+        
+        // Store pending try-on information in local storage
+        const pendingTryOn = {
+          productId: product.id,
+          productName: product.name,
+          timestamp: new Date().toISOString(),
+        };
+        localStorage.setItem('pendingTryOn', JSON.stringify(pendingTryOn));
+        
+        // Auto close after a few seconds
+        setTimeout(() => {
+          onClose();
+        }, 4000);
+      }, 1000);
     }, 500);
   };
 
@@ -169,7 +186,7 @@ export default function DressingRoom({ product, onClose }: DressingRoomProps) {
               priority
             />
             
-            {/* Curtain animation - now starts open and closes */}
+            {/* Curtain animation - with message bubble */}
             {showCurtains && (
               <div className="absolute inset-0 flex">
                 <div 
@@ -190,6 +207,21 @@ export default function DressingRoom({ product, onClose }: DressingRoomProps) {
                     transitionTimingFunction: 'cubic-bezier(0.4, 0.0, 0.2, 1)' 
                   }}
                 ></div>
+                
+                {/* Message bubble on curtain */}
+                {showMessage && (
+                  <div className="absolute inset-0 flex items-center justify-center p-8 animate-fade-in">
+                    <div className="bg-white rounded-xl p-6 shadow-lg max-w-xs text-center">
+                      <h3 className="font-bold text-lg mb-2">Processing Your Image</h3>
+                      <p className="text-gray-700">
+                        Your stylized image is being prepared and will be ready shortly.
+                      </p>
+                      <p className="text-gray-600 text-sm mt-3">
+                        Feel free to continue browsing the collection.
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
