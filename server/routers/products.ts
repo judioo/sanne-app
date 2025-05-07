@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { router, publicProcedure } from '../trpc';
 import { products, getAllCollections } from '../product-data';
 import { UTApi } from 'uploadthing/server';
-import { processImageWithAI, saveBase64Image } from '../utils/image-processor';
+import { processImageWithAI } from '../utils/image-processor';
 import fs from 'fs';
 
 // Initialize UploadThing API
@@ -104,45 +104,21 @@ export const productsRouter = router({
         // Compute TOI URL
         const toiUrl = `https://qjqqeunp2n.ufs.sh/f/${input.imgMD5}-${input.productId}`;
         
-        // Save base64 image to disk
-        const imagePath = saveBase64Image(input.image, input.imgMD5);
+        // Validate the product exists
+        const product = products.find((product) => product.id === input.productId);
+        if (!product) {
+          throw new Error('Product not found');
+        }
         
-       // get the uploads images from products using the productId
-       const product = products.find((product) => product.id === input.productId);
-       if (!product) {
-         throw new Error('Product not found');
-       }
-/*
-       // download the images in uploads array
-       if (!product.uploads) {
-         throw new Error('Product has no images');
-       }
-
-       const productImagesPromises = product.uploads.map(async (imageUrl) => {
-        // fetch the image from the url
-        const response = await fetch(imageUrl);
-        const buffer = await response.arrayBuffer();
-        const base64Image = Buffer.from(buffer).toString('base64');
-        return base64Image;
-       });
-
-       // wait for all images to be downloaded
-       const productImages = await Promise.all(productImagesPromises) as string[];
-
-       // save the product images to disk
-       const imagePaths = productImages.map((image, index) => {
-         saveBase64Image(image, `${input.imgMD5}-${index}`);
-       });
-
-       imagePaths.push(imagePath);
-*/
+        console.log(`Using in-memory processing for image: ${input.image.substring(0, 50)}...`);
         
         // Start background processing (don't wait for it to complete)
         // Add timestamp to track when the processing starts
         const processingStartTime = new Date().toISOString();
         console.log(`[${processingStartTime}] Starting background processing for product ${input.productId} with MD5 ${input.imgMD5}`);
         
-        processImageWithAI(imagePath, input.imgMD5, input.productId)
+        // Process the base64 image directly (fully in-memory)
+        processImageWithAI(input.image, input.imgMD5, input.productId)
           .then(result => {
             const processingEndTime = new Date().toISOString();
             const durationMs = new Date().getTime() - new Date(processingStartTime).getTime();

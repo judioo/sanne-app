@@ -16,36 +16,37 @@ const openai = new OpenAI({
   maxRetries: 2 // Allow retries if the request fails
 });
 
-// Function to download file from URL
-async function downloadFile(url: string, dest: string): Promise<void> {
-  console.log(`Downloading file from ${url} to ${dest}`);
+// Function to download file from URL and return as Buffer
+async function downloadFileToBuffer(url: string): Promise<Buffer> {
+  console.log(`Downloading file from ${url} to memory`);
   
   return new Promise((resolve, reject) => {
-    const file = fs.createWriteStream(dest);
+    const chunks: Buffer[] = [];
+    
     https.get(url, (response) => {
       if (response.statusCode !== 200) {
-        fs.unlink(dest, () => {
-          reject(new Error(`Failed to download, status code: ${response.statusCode}`));
-        });
+        reject(new Error(`Failed to download, status code: ${response.statusCode}`));
         return;
       }
 
-      response.pipe(file);
-      file.on('finish', () => {
-        file.close();
-        resolve();
+      response.on('data', (chunk) => {
+        chunks.push(Buffer.from(chunk));
+      });
+      
+      response.on('end', () => {
+        const buffer = Buffer.concat(chunks);
+        console.log(`Downloaded ${buffer.length} bytes to memory`);
+        resolve(buffer);
       });
     }).on('error', (err) => {
-      fs.unlink(dest, () => {
-        reject(err);
-      });
+      reject(err);
     });
   });
 }
 
 // Function to process image with OpenAI
 export async function processImageWithAI(
-  uploadedImagePath: string,
+  imageBase64: string,
   md5sum: string,
   productId: number
 ): Promise<string | null> {
@@ -65,116 +66,109 @@ export async function processImageWithAI(
       return null;
     }
     
-    // Download product images
-    const frontImagePath = path.join(tempDir, `product_front_${productId}.webp`);
-    const backImagePath = path.join(tempDir, `product_back_${productId}.webp`);
+    // Download product images to memory
+    console.log(`Downloading product images for ${productId}`);
     
-    await downloadFile(product.uploads[0].ufsUrl, frontImagePath);
-    await downloadFile(product.uploads[1].ufsUrl, backImagePath);
+    // Download front and back images to memory
+    const frontImageBuffer = await downloadFileToBuffer(product.uploads[0].ufsUrl);
+    const backImageBuffer = await downloadFileToBuffer(product.uploads[1].ufsUrl);
     
-    console.log('Product images downloaded successfully');
+    console.log(`Product images downloaded successfully: front=${frontImageBuffer.length} bytes, back=${backImageBuffer.length} bytes`);
     
-    // Prepare image file paths
-    const resultImagePath = path.join(tempDir, `result_${md5sum}_${productId}.png`);
-    
-    // Check file format and prepare for OpenAI
-    let processedImagePath = uploadedImagePath;
-    let imageFormat: string;
+    // Convert base64 string to buffer and detect format
+    let userImageBuffer: Buffer;
+    let imageFormat: string = 'png'; // Default format
     
     try {
-      // Read the uploaded image and detect its format
-      const uploadedImageBuffer = fs.readFileSync(uploadedImagePath);
-      const imageInfo = await sharp(uploadedImageBuffer).metadata();
+      // Remove header if present (e.g., data:image/jpeg;base64,)
+      const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
+      
+      // Convert base64 to buffer
+      userImageBuffer = Buffer.from(base64Data, 'base64');
+      console.log(`Converted base64 to buffer: ${userImageBuffer.length} bytes`);
+      
+      // Detect format using Sharp
+      const imageInfo = await sharp(userImageBuffer).metadata();
       imageFormat = imageInfo.format || 'unknown';
       
-      console.log(`Original image format: ${imageFormat}, size: ${uploadedImageBuffer.length} bytes`);
+      console.log(`Detected image format: ${imageFormat}`);
       
-      // Check if the format is already supported by OpenAI
+      // Check if format needs conversion
       const supportedFormats = ['jpeg', 'png', 'webp'];
       
       if (!supportedFormats.includes(imageFormat)) {
         // Convert to PNG if not in a supported format
-        console.log(`Converting from ${imageFormat} to png format`);
-        const pngImagePath = path.join(tempDir, `upload_${md5sum}.png`);
+        console.log(`Converting from ${imageFormat} to png format in memory`);
         
-        await sharp(uploadedImageBuffer)
+        // Use Sharp to convert in memory
+        userImageBuffer = await sharp(userImageBuffer)
           .png() // Convert to PNG
-          .toFile(pngImagePath);
+          .toBuffer();
         
-        processedImagePath = pngImagePath;
-        console.log(`Converted image to PNG format at ${pngImagePath}`);
-        
-        // Verify the file exists
-        if (!fs.existsSync(pngImagePath)) {
-          throw new Error('PNG conversion failed - output file does not exist');
-        }
-        
-        // Log the file info for debugging
-        const stats = fs.statSync(pngImagePath);
-        console.log(`Converted PNG file size: ${stats.size} bytes`);
+        console.log(`Converted image to PNG format in memory: ${userImageBuffer.length} bytes`);
+        imageFormat = 'png';
       } else {
         console.log(`Image already in supported format (${imageFormat}), using as-is`);
       }
     } catch (error) {
-      console.error('Error processing image format:', error);
+      console.error('Error processing base64 image:', error);
       return null;
     }
     
-    // Now we'll prepare all images for OpenAI (user + product images)
+    // Prepare all images for OpenAI (user + product images)
     console.log('Using images for OpenAI:');
-    console.log('- User image:', processedImagePath);
-    console.log('- Front product image:', frontImagePath);
-    console.log('- Back product image:', backImagePath);
+    console.log(`- User image: ${userImageBuffer.length} bytes, format: ${imageFormat}`);
+    console.log(`- Front product image: ${frontImageBuffer.length} bytes`);
+    console.log(`- Back product image: ${backImageBuffer.length} bytes`);
     
-    // Create an array of all images to send to OpenAI
-    const imageFiles = [
-      processedImagePath,  // User's uploaded image first
-      frontImagePath,     // Front view of product
-      backImagePath       // Back view of product
-    ];
+    // Prepare all images in memory for OpenAI
+    console.log('Preparing images for OpenAI...');
     
     // Convert all images to proper file objects for OpenAI
-    const images = await Promise.all(
-      imageFiles.map(async (file) => {
-        try {
-          // Get metadata from the image using Sharp
-          const metadata = await sharp(file).metadata();
-          const format = metadata.format || 'unknown';
-          
-          // Map format to MIME type
-          const mimeType = format === 'png' ? 'image/png' : 
+    const images = await Promise.all([
+      // User's image
+      (async () => {
+        const mimeType = imageFormat === 'png' ? 'image/png' : 
+                         imageFormat === 'webp' ? 'image/webp' : 
+                         imageFormat === 'jpeg' ? 'image/jpeg' : 'image/png';
+        
+        console.log(`Processing user image - format: ${imageFormat}, MIME type: ${mimeType}`);
+        return await toFile(Buffer.from(userImageBuffer), 'user-image.png', { type: mimeType });
+      })(),
+      
+      // Front product image
+      (async () => {
+        // Detect format using Sharp
+        const metadata = await sharp(frontImageBuffer).metadata();
+        const format = metadata.format || 'webp';
+        const mimeType = format === 'png' ? 'image/png' : 
                           format === 'webp' ? 'image/webp' : 
-                          format === 'jpeg' || format === 'jpg' ? 'image/jpeg' : 'image/png';
-          
-          console.log(`Processing ${file} - detected format: ${format}, using MIME type: ${mimeType}`);
-          
-          // Convert to an OpenAI-compatible format if needed
-          if (!['png', 'jpeg', 'webp'].includes(format)) {
-            console.log(`Converting ${file} from ${format} to png`); 
-            const tempPngPath = `${file}.png`;
-            await sharp(file).png().toFile(tempPngPath);
-            
-            // Use the converted file instead
-            const result = await toFile(fs.createReadStream(tempPngPath), null, { type: 'image/png' });
-            // Clean up temp file
-            fs.unlinkSync(tempPngPath);
-            return result;
-          }
-          
-          return await toFile(fs.createReadStream(file), null, { type: mimeType });
-        } catch (error) {
-          console.error(`Error processing image ${file}:`, error);
-          throw error;
-        }
-      })
-    );
+                          format === 'jpeg' ? 'image/jpeg' : 'image/webp';
+        
+        console.log(`Processing front image - format: ${format}, MIME type: ${mimeType}`);
+        return await toFile(Buffer.from(frontImageBuffer), 'front-image.webp', { type: mimeType });
+      })(),
+      
+      // Back product image
+      (async () => {
+        // Detect format using Sharp
+        const metadata = await sharp(backImageBuffer).metadata();
+        const format = metadata.format || 'webp';
+        const mimeType = format === 'png' ? 'image/png' : 
+                          format === 'webp' ? 'image/webp' : 
+                          format === 'jpeg' ? 'image/jpeg' : 'image/webp';
+        
+        console.log(`Processing back image - format: ${format}, MIME type: ${mimeType}`);
+        return await toFile(Buffer.from(backImageBuffer), 'back-image.webp', { type: mimeType });
+      })()
+    ]);
     
     console.log('Making OpenAI API call with multiple images (may take up to 3 minutes)...');
     
     // Track start time for logging
     const startTime = Date.now();
     
-    let b64Image: string | undefined;
+    let b64Image: Buffer | null = null;
     let useUnavailableImage = false;
     
     try {
@@ -199,12 +193,17 @@ export async function processImageWithAI(
       
       
       if (response.created) {
-        const blob = response?.data?.[0]?.b64_json;
-        if (blob) {
-          b64Image = Buffer.from(blob, 'base64');
+        const base64Data = response?.data?.[0]?.b64_json;
+        if (base64Data) {
+          // Convert base64 string to Buffer
+          b64Image = Buffer.from(base64Data, 'base64');
+          console.log(`Received OpenAI image as base64, size: ${b64Image.length} bytes`);
+        } else {
+          console.error('No base64 data received from OpenAI');
+          useUnavailableImage = true;
         }
       } else {
-        console.error('No result URL received from OpenAI, using fallback image');
+        console.error('OpenAI response invalid, using fallback image');
         useUnavailableImage = true;
       }
     } catch (error) {
@@ -221,21 +220,15 @@ export async function processImageWithAI(
     // Compute the TOI URL - this is what we'll return regardless of success or failure
     const toiUrl = `https://qjqqeunp2n.ufs.sh/f/${md5sum}-${productId}`;
     
-    if (!b64Image) {
-      // read unavailable file into b64Image if OpenAI failed
+    // Handle fallback image if needed
+    if (!b64Image || useUnavailableImage) {
+      // Load unavailable.png into b64Image if OpenAI failed
       const unavailablePath = path.resolve(process.cwd(), 'public/unavailable.png');
       console.log(`Using fallback image: ${unavailablePath}`);
-      const imageBuffer = fs.readFileSync(unavailablePath);
-      b64Image = imageBuffer;
-    }
-
-    // Save b64Image to output path (needed for either approach)
-    if (b64Image) {
-      fs.writeFileSync(resultImagePath, b64Image);
-      console.log(`Saved image to ${resultImagePath}`);
+      b64Image = fs.readFileSync(unavailablePath);
+      console.log(`Loaded fallback image: ${b64Image.length} bytes`);
     } else {
-      console.error('No image data available to save');
-      return null;
+      console.log(`Using OpenAI-generated image: ${b64Image.length} bytes`);
     }
     
     // upload the image to uploadthing
@@ -244,8 +237,10 @@ export async function processImageWithAI(
       const fileName = `${md5sum}-${productId}.png`;
       
       // For UploadThing, create a proper Blob and then a File object
-      // This handles both Buffer and string types for b64Image
-      const blob = new Blob([b64Image], { type: 'image/png' });
+      // Since b64Image is always a Buffer at this point, we can safely use it
+      // First, create a Blob with the correct MIME type
+      const blob = new Blob([b64Image as Buffer], { type: 'image/png' });
+      // Then create a File object to upload
       const file = new File([blob], fileName, { type: "image/png" });
       
       // Upload to UploadThing
@@ -262,22 +257,9 @@ export async function processImageWithAI(
       return toiUrl;
     }
     
-    // Clean up temp files
-    try {
-      fs.unlinkSync(frontImagePath);
-      fs.unlinkSync(backImagePath);
-      fs.unlinkSync(resultImagePath);
-      
-      // Only delete the processed image if it's different from the original
-      if (processedImagePath !== uploadedImagePath) {
-        fs.unlinkSync(processedImagePath);
-      }
-      
-      fs.unlinkSync(uploadedImagePath);
-      console.log('Temporary files cleaned up successfully');
-    } catch (err) {
-      console.error('Error cleaning up temp files:', err);
-    }
+    // No file cleanup needed since we're working in memory
+    console.log('All processing completed in memory, no files to clean up');
+    // Note: tempDir might still be created if it didn't exist before, but no files are written to it
     
     console.log('Image processing completed successfully');
     console.log(`Final TOIUrl: ${toiUrl}`);
@@ -288,20 +270,4 @@ export async function processImageWithAI(
   }
 }
 
-// Function to decode and save base64 image
-export function saveBase64Image(base64Data: string, md5sum: string): string {
-  // Create temp directory if it doesn't exist
-  const tempDir = path.resolve(process.cwd(), 'temp');
-  if (!fs.existsSync(tempDir)) {
-    fs.mkdirSync(tempDir, { recursive: true });
-  }
-  
-  // Remove header if present (e.g., data:image/jpeg;base64,)
-  const base64Image = base64Data.replace(/^data:image\/\w+;base64,/, '');
-  const imagePath = path.join(tempDir, `upload_${md5sum}.webp`);
-  
-  // Save the image
-  fs.writeFileSync(imagePath, Buffer.from(base64Image, 'base64'));
-  
-  return imagePath;
-}
+// Function no longer needed as we're doing everything in memory
