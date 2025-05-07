@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
 import { XMarkIcon, ArrowUpTrayIcon, CameraIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
+import md5 from 'md5';
+import { trpc } from '@/utils/trpc';
 
 type DressingRoomProps = {
   product: any; // Product details
@@ -17,6 +19,9 @@ type TryOnItem = {
   timestamp: string;
   status: 'pending' | 'ready';
   imageUrl?: string;
+  TOIUrl?: string;       // URL where the processed image will be available
+  uploadImgUrl?: string; // URL where the uploaded image is stored
+  imgMD5?: string;       // MD5 hash of the image for reference
 };
 
 export default function DressingRoom({ product, onClose, startWithClosedCurtains = false }: DressingRoomProps) {
@@ -31,6 +36,7 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
   const [tryOnImages, setTryOnImages] = useState<string[]>([]);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [hasReadyTryOns, setHasReadyTryOns] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   
@@ -197,7 +203,7 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
   };
 
   // Function to add try-on item to localStorage
-  const addTryOnItem = () => {
+  const addTryOnItem = (): TryOnItem => {
     // Create new try-on item
     const newTryOnItem: TryOnItem = {
       productId: product.id,
@@ -205,6 +211,11 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
       timestamp: new Date().toISOString(),
       status: 'pending'
     };
+    
+    // Add MD5 hash if we have an uploaded image
+    if (uploadedImage) {
+      newTryOnItem.imgMD5 = calculateImageMD5(uploadedImage);
+    }
     
     // Get existing try-on items from localStorage
     let tryOnItems: TryOnItem[] = [];
@@ -235,14 +246,94 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
     
     // Save updated array back to localStorage
     localStorage.setItem('tryOnItems', JSON.stringify(tryOnItems));
+    
+    // Return the new item for reference
+    return newTryOnItem;
+  };
+  
+  // Calculate MD5 hash of a base64 image
+  const calculateImageMD5 = (base64Image: string) => {
+    return md5(base64Image);
+  };
+  
+  // Set up TRPC mutation for image upload
+  const { mutateAsync: uploadToDressingRoom } = trpc.products.toDressingRoom.useMutation({
+    onSuccess: (result, variables) => {
+      console.log('Image upload to dressing room successful');
+      console.log('TOIUrl:', result.TOIUrl);
+      console.log('uploadImgUrl:', result.uploadImgUrl);
+      setUploadError(null);
+      
+      // Update localStorage with the result
+      updateTryOnItemWithResults(result, variables.imgMD5);
+    },
+    onError: (error) => {
+      console.error('Error uploading image to dressing room:', error);
+      setUploadError('Failed to process image. Please try again.');
+    }
+  });
+  
+  // Update localStorage with TRPC response
+  const updateTryOnItemWithResults = (result: { TOIUrl: string, uploadImgUrl: string }, imgMD5Hash: string) => {
+    // Get existing try-on items
+    const existingItems = localStorage.getItem('tryOnItems');
+    if (existingItems) {
+      try {
+        const items: TryOnItem[] = JSON.parse(existingItems);
+        
+        // Find and update the specific item
+        const updatedItems = items.map(item => {
+          if (item.productId === product.id) {
+            return {
+              ...item,
+              TOIUrl: result.TOIUrl,
+              uploadImgUrl: result.uploadImgUrl,
+              imgMD5: imgMD5Hash
+            };
+          }
+          return item;
+        });
+        
+        // Save updated items back to localStorage
+        localStorage.setItem('tryOnItems', JSON.stringify(updatedItems));
+      } catch (e) {
+        console.error('Error updating try-on items with server response:', e);
+      }
+    }
+  };
+  
+  // Upload image to server using TRPC
+  const uploadImageToServer = async (base64Image: string) => {
+    try {
+      const imgMD5Hash = calculateImageMD5(base64Image);
+      console.log(`Uploading image to dressing room for product ${product.id} with MD5 ${imgMD5Hash.substring(0, 8)}...`);
+      
+      // Call the TRPC endpoint
+      uploadToDressingRoom({
+        image: base64Image,
+        imgMD5: imgMD5Hash,
+        productId: product.id
+      });
+      
+      // We're not awaiting the result since we want the UI to continue without waiting
+      console.log('Upload initiated in background');
+    } catch (error) {
+      console.error('Error initiating image upload:', error);
+      setUploadError('Failed to start image processing. Please try again.');
+    }
   };
 
-  // Go to dressing room with animation - updated to handle multiple try-on items
+  // Go to dressing room with animation - updated to include image upload
   const goToDressingRoom = () => {
     // If curtains are already closed (for existing try-on), just add the item and close
     if (startWithClosedCurtains) {
       // Add try-on item to localStorage
       addTryOnItem();
+      
+      // Upload image in the background if available
+      if (uploadedImage) {
+        uploadImageToServer(uploadedImage);
+      }
       
       // Auto close after a few seconds
       setTimeout(() => {
@@ -268,8 +359,13 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
       setTimeout(() => {
         setShowMessage(true);
         
-        // Add try-on item to localStorage
-        addTryOnItem();
+        // Add try-on item to localStorage and get reference to it
+        const newTryOnItem = addTryOnItem();
+        
+        // Upload image to server if available
+        if (uploadedImage) {
+          uploadImageToServer(uploadedImage);
+        }
         
         // Auto close after a few seconds
         setTimeout(() => {
