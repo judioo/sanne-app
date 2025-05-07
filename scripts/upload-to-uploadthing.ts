@@ -97,15 +97,43 @@ function getUrlFromResponse(response: UploadthingResponse): string | null {
 function isDuplicateEntryError(error: any): boolean {
   if (!error) return false;
   
+  // First try to check the specific error message in the response body
+  try {
+    if (error.annotations?.response?.body?.message) {
+      const specificMessage = error.annotations.response.body.message;
+      if (specificMessage.includes('AlreadyExists')) {
+        return true;
+      }
+    }
+  } catch (e) {
+    // Ignore extraction errors and fall back to checking the full error
+  }
+  
+  // Fall back to checking the full serialized error
   const errorMessage = JSON.stringify(error);
   return errorMessage.includes('Duplicate entry') || 
          errorMessage.includes('AlreadyExists') || 
          errorMessage.includes('external_id_idx');
 }
 
+// Helper function to extract specific error message from the response
+function extractErrorMessage(error: any): string {
+  try {
+    if (error.annotations?.response?.body?.message) {
+      return error.annotations.response.body.message;
+    }
+  } catch (e) {
+    // Ignore extraction errors
+  }
+  return '';
+}
+
 // Helper function to analyze and log error with decision
 function analyzeError(error: any, customId: string, sourceUrl: string): string {
-  // Convert error to string for easier parsing
+  // Extract the specific error message if possible
+  const specificMessage = extractErrorMessage(error);
+  
+  // Convert error to string for easier parsing when specific message isn't available
   const errorStr = JSON.stringify(error);
   console.error('\n🔍 ERROR ANALYSIS:');
   console.error(`Source URL: ${sourceUrl}`);
@@ -122,6 +150,9 @@ function analyzeError(error: any, customId: string, sourceUrl: string): string {
     console.error('✗ Invalid token error detected');
     console.error('✗ Issue with the UPLOADTHING_TOKEN provided');
     console.error('✗ Decision: Check token format and validity in .env.local file');
+    if (specificMessage && !specificMessage.includes('AlreadyExists')) {
+      console.error(`✗ Error details: ${specificMessage}`);
+    }
     return 'INVALID_TOKEN';
   }
   
@@ -129,6 +160,9 @@ function analyzeError(error: any, customId: string, sourceUrl: string): string {
     console.error('✗ Request timed out');
     console.error('✗ This could be due to network issues or large file size');
     console.error('✗ Decision: Skip this file and continue with others');
+    if (specificMessage && !specificMessage.includes('AlreadyExists')) {
+      console.error(`✗ Error details: ${specificMessage}`);
+    }
     return 'TIMEOUT';
   }
   
@@ -136,11 +170,18 @@ function analyzeError(error: any, customId: string, sourceUrl: string): string {
     console.error('✗ Source image not found (404)');
     console.error('✗ The source URL may be invalid or no longer accessible');
     console.error('✗ Decision: Skip this file and continue with others');
+    if (specificMessage && !specificMessage.includes('AlreadyExists')) {
+      console.error(`✗ Error details: ${specificMessage}`);
+    }
     return 'SOURCE_NOT_FOUND';
   }
   
   console.error('✗ Unknown error type');
-  console.error('✗ Full error:', errorStr.substring(0, 500) + (errorStr.length > 500 ? '...' : ''));
+  if (specificMessage && !specificMessage.includes('AlreadyExists')) {
+    console.error(`✗ Error details: ${specificMessage}`);
+  } else {
+    console.error('✗ Full error:', errorStr.substring(0, 500) + (errorStr.length > 500 ? '...' : ''));
+  }
   console.error('✗ Decision: Skip this file and continue with others');
   return 'UNKNOWN_ERROR';
 }
