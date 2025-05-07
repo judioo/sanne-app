@@ -1,5 +1,3 @@
-import fs from 'fs';
-import path from 'path';
 import { UTApi, UTFile } from 'uploadthing/server';
 import OpenAI, { toFile } from 'openai';
 import { products } from '../product-data';
