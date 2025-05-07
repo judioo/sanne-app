@@ -53,12 +53,6 @@ export async function processImageWithAI(
   try {
     console.log(`Processing image for product ${productId} with md5sum ${md5sum}`);
     
-    // Create temp directory if it doesn't exist
-    const tempDir = path.resolve(process.cwd(), 'temp');
-    if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir, { recursive: true });
-    }
-    
     // Get product details
     const product = products.find(p => p.id === productId);
     if (!product || !product.uploads || product.uploads.length < 2) {
@@ -188,9 +182,6 @@ export async function processImageWithAI(
       // Calculate elapsed time
       const elapsedTime = (Date.now() - startTime) / 1000;
       console.log(`OpenAI response received in ${elapsedTime.toFixed(2)} seconds`);
-      // if response dump the data to a file
-      fs.writeFileSync('openai_response.json', JSON.stringify(response, null, 2));
-      
       
       if (response.created) {
         const base64Data = response?.data?.[0]?.b64_json;
@@ -222,11 +213,19 @@ export async function processImageWithAI(
     
     // Handle fallback image if needed
     if (!b64Image || useUnavailableImage) {
-      // Load unavailable.png into b64Image if OpenAI failed
-      const unavailablePath = path.resolve(process.cwd(), 'public/unavailable.png');
-      console.log(`Using fallback image: ${unavailablePath}`);
-      b64Image = fs.readFileSync(unavailablePath);
-      console.log(`Loaded fallback image: ${b64Image.length} bytes`);
+      // Load fallback image from URL instead of from disk
+      const fallbackImageUrl = 'https://qjqqeunp2n.ufs.sh/f/od09cELhFxDCGQTATl4GN267MkFxYc0XhIaUj3WefDHQuLbJ';
+      console.log(`Using fallback image from URL: ${fallbackImageUrl}`);
+      
+      try {
+        // Download the fallback image directly into memory
+        b64Image = await downloadFileToBuffer(fallbackImageUrl);
+        console.log(`Downloaded fallback image: ${b64Image.length} bytes`);
+      } catch (error) {
+        console.error('Error downloading fallback image:', error);
+        // Create an empty buffer as absolute last resort
+        b64Image = Buffer.from([]);
+      }
     } else {
       console.log(`Using OpenAI-generated image: ${b64Image.length} bytes`);
     }
