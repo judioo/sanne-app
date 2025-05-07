@@ -166,15 +166,23 @@ export async function processImageWithAI(
     try {
       // Send all images to OpenAI with extended timeout
       console.log('Calling OpenAI API with multiple images...');
+      
+      const prompt = `Replace the model's outfit in the photo with a new one. 
+      Pay particular attention to the details of the dress (e.g., straps, flow, and hang). 
+      I've provided back and front images of the garment so you know how it looks and flows. 
+      Make the design match as closely as possible. The model's face must match that of the person in the picture. 
+      Pay particular attention to the eyes, mouth and nose. Get the facial details as close to the original as possible. 
+      For female models of colour, do not make them fatter than the pictures are. make them look slimer but not skinny. 
+      Return a square image.`;
+
       const response = await openai.images.edit({
         image: images,
-        prompt: `Create a realistic virtual try-on image where the person in the first image is wearing the ${product.name.toLowerCase()} shown in the reference images. Maintain the person's pose, proportions, and background from the first image, but replace their clothing with the ${product.name.toLowerCase()}. The garment should look natural, with accurate draping, fit, and fabric texture based on the front and back product images provided.`,
+        prompt: prompt,
         model: "gpt-image-1",
         n: 1,
         size: "1024x1024",
         quality: "high",
-        background: "auto",
-        moderation: "auto"
+        background: "auto"
       });
       
       // Calculate elapsed time
