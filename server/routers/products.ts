@@ -1,10 +1,10 @@
 import { z } from 'zod';
-import { after } from 'next/server';
 import { router, publicProcedure } from '../trpc';
 import { products, getAllCollections } from '../product-data';
 import { UTApi } from 'uploadthing/server';
 import { processImageWithAI } from '../utils/image-processor';
 import { QueryCache, toiPayload } from '../utils/redis';
+import { inngest } from '../utils/inngest';
 
 // Initialize UploadThing API
 const utapi = new UTApi();
@@ -103,48 +103,29 @@ export const productsRouter = router({
       productId: z.number() // product ID
     }))
     .mutation(async ({ input }) => {
-       // Compute TOI ID
-       const TOIID = `${e}-${input.imgMD5}-${input.productId}`;
-       console.log(`Processing dressing room request for product ${input.productId} TOIID: ${TOIID}`);
-       
-      after( async () => {
-        try {
-          // Validate the product exists
-          const product = products.find((product) => product.id === input.productId);
-          if (!product) {
-            throw new Error('Product not found');
+      // Compute TOI ID
+      const TOIID = `${e}-${input.imgMD5}-${input.productId}`;
+      console.log(`Processing dressing room request for product ${input.productId} TOIID: ${TOIID}`);
+      
+      try {
+        // Send the event to Inngest for background processing
+        await inngest.send({
+          name: 'image/process',
+          data: {
+            image: input.image,
+            imgMD5: input.imgMD5,
+            productId: input.productId,
+            TOIJobId: TOIID
           }
-
-          console.log(`Using in-memory processing for image: ${input.image.substring(0, 50)}...`);
-          
-          // Start background processing (don't wait for it to complete)
-          // Add timestamp to track when the processing starts
-          const processingStartTime = new Date().toISOString();
-          console.log(`[${processingStartTime}] Starting background processing for product ${input.productId} with MD5 ${input.imgMD5}`);
-          
-          // Process the base64 image directly (fully in-memory)
-          processImageWithAI(input.image, input.imgMD5, input.productId)
-            .then(result => {
-              const processingEndTime = new Date().toISOString();
-              const durationMs = new Date().getTime() - new Date(processingStartTime).getTime();
-              
-              if (result) {
-                console.log(`[${processingEndTime}] ✅ Successfully completed background processing for product ${input.productId}`);
-                console.log(`Processing took ${(durationMs / 1000).toFixed(1)} seconds`);
-                console.log(`Final TOI URL: ${result}`);
-              } else {
-                console.error(`[${processingEndTime}] ❌ Background processing failed for product ${input.productId} after ${(durationMs / 1000).toFixed(1)} seconds`);
-              }
-            })
-            .catch(error => {
-              const processingEndTime = new Date().toISOString();
-              console.error(`[${processingEndTime}] ❌ Error in background processing for product ${input.productId}:`, error);
-            });
-        } catch (error) {
-          console.error('Error in toDressingRoom:', error);
-          throw error;
-        }
-      });
+        });
+        
+        console.log(`Triggered Inngest job for processing image. TOIID: ${TOIID}`);
+      } catch (error) {
+        console.error('Error triggering Inngest job:', error);
+        // Don't throw the error - we still want to return the TOIID
+        // This follows the same pattern as before, where background processing errors
+        // didn't stop the response
+      }
 
       // Return immediately with TOI ID
       return {
