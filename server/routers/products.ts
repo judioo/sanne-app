@@ -103,11 +103,9 @@ export const productsRouter = router({
       productId: z.number() // product ID
     }))
     .mutation(async ({ input }) => {
-      console.log(`Processing dressing room request for product ${input.productId}`);
-        
-      // Compute TOI ID
-      const TOIID = `${e}-${input.imgMD5}-${input.productId}`;
-      console.log(`TOI ID: ${TOIID}`);
+       // Compute TOI ID
+       const TOIID = `${e}-${input.imgMD5}-${input.productId}`;
+       console.log(`Processing dressing room request for product ${input.productId} TOIID: ${TOIID}`);
        
       after( async () => {
         try {
