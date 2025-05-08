@@ -43,15 +43,16 @@ export default function TryOnList({ onClose }: TryOnListProps) {
   const router = useRouter();
   const listRef = useRef<HTMLDivElement>(null);
   
-  // Keep track of our polling interval
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  // Keep track of our polling timeout
+  const pollingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // Custom hook for calling checkDressingRoom
   const checkDressingRoom = trpc.products.checkDressingRoom.useQuery(
     { jobIds: tryOnItems.filter(item => item.TOIID).map(item => item.TOIID!) },
     { 
       enabled: pollingEnabled && tryOnItems.some(item => item.TOIID),
-      refetchInterval: 2000, // Poll every 2 seconds
+      refetchInterval: 3000, // Poll every 3 seconds
+      refetchOnMount: true, // Always refetch when mounted
     }
   );
 
@@ -104,23 +105,70 @@ export default function TryOnList({ onClose }: TryOnListProps) {
     setPollingEnabled(parsedItems.length > 0);
   };
   
-  // Load try-on items from localStorage on initial render
+  // Load try-on items from localStorage and handle polling
   useEffect(() => {
+    // First, load the latest data from localStorage
     loadFromLocalStorage();
+    
+    // Start polling when component mounts
+    setPollingEnabled(true);
+    
+    // Set a timeout to disable polling after 3 seconds
+    pollingTimeoutRef.current = setTimeout(() => {
+      setPollingEnabled(false);
+    }, 3000);
+    
+    // Clean up when component unmounts
+    return () => {
+      if (pollingTimeoutRef.current) {
+        clearTimeout(pollingTimeoutRef.current);
+        pollingTimeoutRef.current = null;
+      }
+      setPollingEnabled(false);
+    };
   }, []);
   
   // Set up listeners for visibility and focus changes
   useEffect(() => {
-    // This handler will reload data when the page becomes visible again
+    // This handler will reload data and restart polling when the page becomes visible again
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
+        // Load fresh data first
         loadFromLocalStorage();
+        
+        // Clear any existing timeout
+        if (pollingTimeoutRef.current) {
+          clearTimeout(pollingTimeoutRef.current);
+        }
+        
+        // Enable polling for 3 seconds
+        setPollingEnabled(true);
+        pollingTimeoutRef.current = setTimeout(() => {
+          setPollingEnabled(false);
+          pollingTimeoutRef.current = null;
+        }, 3000);
+      } else {
+        // Disable polling when tab is not visible
+        setPollingEnabled(false);
       }
     };
     
-    // This handler will reload data when window gets focus
+    // This handler will reload data and restart polling when window gets focus
     const handleFocus = () => {
+      // Load fresh data first
       loadFromLocalStorage();
+      
+      // Clear any existing timeout
+      if (pollingTimeoutRef.current) {
+        clearTimeout(pollingTimeoutRef.current);
+      }
+      
+      // Enable polling for 3 seconds
+      setPollingEnabled(true);
+      pollingTimeoutRef.current = setTimeout(() => {
+        setPollingEnabled(false);
+        pollingTimeoutRef.current = null;
+      }, 3000);
     };
     
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -130,6 +178,14 @@ export default function TryOnList({ onClose }: TryOnListProps) {
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleFocus);
+      
+      // Clean up any polling timeout
+      if (pollingTimeoutRef.current) {
+        clearTimeout(pollingTimeoutRef.current);
+        pollingTimeoutRef.current = null;
+      }
+      
+      setPollingEnabled(false);
     };
   }, []);
 
