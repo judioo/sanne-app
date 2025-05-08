@@ -4,14 +4,14 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { XMarkIcon, CameraIcon, TrashIcon } from '@heroicons/react/24/outline';
-import { TOI_STATUS } from '@/server/utils/toi-constants';
+import { TOI_STATUS, TOIToDressingRoomStatusMapper } from '@/server/utils/toi-constants';
 import { trpc } from '@/utils/trpc';
 
 type TryOnItem = {
   productId: number;
   productName: string;
   timestamp: string;
-  status: 'pending' | 'ready';
+  status: (typeof TOIToDressingRoomStatusMapper)[keyof typeof TOIToDressingRoomStatusMapper];
   TOIID?: string; // Unique ID for try-on job
   imageUrl?: string; // For ready items
   dressStatus?: string; // Friendly status from server
@@ -96,13 +96,12 @@ export default function TryOnList({ onClose }: TryOnListProps) {
         if (item.TOIID && checkDressingRoom.data[item.TOIID]) {
           const serverData = checkDressingRoom.data[item.TOIID];
           
-          // Update status based on server data
-          let status: 'pending' | 'ready' = 'pending';
+          // Get the actual status from server data
+          const status = serverData.dressStatus || 'Gone';
           let imageUrl = item.imageUrl;
           
-          // If there's a URL, it's ready to show
+          // If there's a URL and status is completed, use the URL
           if (serverData.url && serverData.status === TOI_STATUS.COMPLETED) {
-            status = 'ready';
             imageUrl = serverData.url;
           }
           
@@ -261,18 +260,27 @@ export default function TryOnList({ onClose }: TryOnListProps) {
             <div className="flex items-center space-x-3">
               {/* Small product avatar */}
               <div className="w-10 h-10 bg-gray-100 rounded-md relative flex-shrink-0 overflow-hidden">
-                {item.status === 'ready' ? (
-                  // Ready items show the processed image avatar
+                {item.status === 'Click To Reveal' && item.imageUrl ? (
+                  // Completed items show the processed image avatar
                   <Image 
-                    src={item.imageUrl || '/lena-with-clothes.jpeg'} 
+                    src={item.imageUrl} 
                     alt={`Try on of ${item.productName}`}
                     fill
                     className="object-cover"
                   />
                 ) : (
-                  // Pending items show a spinner
+                  // Items in process show a spinner with color based on status
                   <div className="w-full h-full flex items-center justify-center">
-                    <div className="animate-spin h-5 w-5 border-2 border-[#a1a561] border-t-transparent rounded-full"></div>
+                    <div className={`animate-spin h-5 w-5 border-2 border-t-transparent rounded-full ${  
+                      item.status === 'Gone' ? 'border-red-500' :
+                      item.status === 'Sizing Item' ? 'border-blue-500' :
+                      item.status === 'Item Sized' ? 'border-indigo-500' :
+                      item.status === 'Adorning' ? 'border-purple-500' :
+                      item.status === 'Mirror Check' ? 'border-pink-500' :
+                      item.status === 'Final Adjustments' ? 'border-orange-500' :
+                      item.status === 'Click To Reveal' ? 'border-green-500' :
+                      'border-[#a1a561]'
+                    }`}></div>
                   </div>
                 )}
               </div>
@@ -281,23 +289,18 @@ export default function TryOnList({ onClose }: TryOnListProps) {
               <div className="flex-1 min-w-0">
                 <h4 className="font-medium text-sm mb-1 truncate">{item.productName}</h4>
                 <div className="flex items-center">
-                  {item.status === 'pending' ? (
-                    <span className={`px-2 py-0.5 text-xs rounded-full ${
-                      item.dressStatus === 'Gone' ? 'bg-red-100 text-red-800' :
-                      item.dressStatus === 'Sizing Item' ? 'bg-blue-100 text-blue-800' :
-                      item.dressStatus === 'Item Sized' ? 'bg-indigo-100 text-indigo-800' :
-                      item.dressStatus === 'Adorning' ? 'bg-purple-100 text-purple-800' :
-                      item.dressStatus === 'Mirror Check' ? 'bg-pink-100 text-pink-800' :
-                      item.dressStatus === 'Final Adjustments' ? 'bg-orange-100 text-orange-800' :
-                      'bg-yellow-100 text-yellow-800'
-                    }`}>
-                      {item.dressStatus || 'Processing'}
-                    </span>
-                  ) : (
-                    <span className="px-2 py-0.5 text-xs bg-green-100 text-green-800 rounded-full">
-                      {item.dressStatus || 'Ready'}
-                    </span>
-                  )}
+                  <span className={`px-2 py-0.5 text-xs rounded-full ${
+                    item.status === 'Gone' ? 'bg-red-100 text-red-800' :
+                    item.status === 'Sizing Item' ? 'bg-blue-100 text-blue-800' :
+                    item.status === 'Item Sized' ? 'bg-indigo-100 text-indigo-800' :
+                    item.status === 'Adorning' ? 'bg-purple-100 text-purple-800' :
+                    item.status === 'Mirror Check' ? 'bg-pink-100 text-pink-800' :
+                    item.status === 'Final Adjustments' ? 'bg-orange-100 text-orange-800' :
+                    item.status === 'Click To Reveal' ? 'bg-green-100 text-green-800' :
+                    'bg-yellow-100 text-yellow-800'
+                  }`}>
+                    {item.status || 'Processing'}
+                  </span>
                   <span className="text-xs text-gray-500 ml-2">
                     {new Date(item.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                   </span>
