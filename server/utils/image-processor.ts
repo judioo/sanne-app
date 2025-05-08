@@ -222,7 +222,7 @@ export async function processImageWithAI(
       // Update status before uploading result
       await toiCache.set({ 
         jobId: TOIJobId, 
-        status: 'uploading-result', 
+        status: 'received-openai-image', 
         productId, 
         md5sum,
         timestamp: Date.now() 
