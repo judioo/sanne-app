@@ -39,12 +39,13 @@ export default function TryOnList({ onClose }: TryOnListProps) {
   const [tryOnItems, setTryOnItems] = useState<TryOnItem[]>([]);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [pollingEnabled, setPollingEnabled] = useState(false);
-  const [serverItems, setServerItems] = useState<serverData[]>([]);
+  const [serverItems, setServerItems] = useState<TryOnItem[]>([]);
   const router = useRouter();
   const listRef = useRef<HTMLDivElement>(null);
   
-  // Keep track of our polling timeout
-  const pollingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Keep track of our polling count
+  const pollCountRef = useRef<number>(0);
+  const MAX_POLLS = 3; // Maximum number of polls before stopping
   
   // Custom hook for calling checkDressingRoom
   const checkDressingRoom = trpc.products.checkDressingRoom.useQuery(
@@ -55,6 +56,21 @@ export default function TryOnList({ onClose }: TryOnListProps) {
       refetchOnMount: true, // Always refetch when mounted
     }
   );
+  
+  // Monitor polling count to limit to MAX_POLLS
+  useEffect(() => {
+    // Only increment count when polling is enabled and we have data
+    if (pollingEnabled && checkDressingRoom.dataUpdatedAt > 0) {
+      // Increment poll count
+      pollCountRef.current += 1;
+      
+      // Stop polling after MAX_POLLS
+      if (pollCountRef.current >= MAX_POLLS) {
+        setPollingEnabled(false);
+        pollCountRef.current = 0; // Reset for next time
+      }
+    }
+  }, [checkDressingRoom.dataUpdatedAt, pollingEnabled]);
 
   // Function to load try-on items from localStorage
   const loadFromLocalStorage = () => {
@@ -112,19 +128,12 @@ export default function TryOnList({ onClose }: TryOnListProps) {
     
     // Start polling when component mounts
     setPollingEnabled(true);
-    
-    // Set a timeout to disable polling after 3 seconds
-    pollingTimeoutRef.current = setTimeout(() => {
-      setPollingEnabled(false);
-    }, 3000);
+    pollCountRef.current = 0; // Reset poll count
     
     // Clean up when component unmounts
     return () => {
-      if (pollingTimeoutRef.current) {
-        clearTimeout(pollingTimeoutRef.current);
-        pollingTimeoutRef.current = null;
-      }
       setPollingEnabled(false);
+      pollCountRef.current = 0; // Reset poll count
     };
   }, []);
   
@@ -136,17 +145,9 @@ export default function TryOnList({ onClose }: TryOnListProps) {
         // Load fresh data first
         loadFromLocalStorage();
         
-        // Clear any existing timeout
-        if (pollingTimeoutRef.current) {
-          clearTimeout(pollingTimeoutRef.current);
-        }
-        
-        // Enable polling for 3 seconds
+        // Reset poll count and enable polling
+        pollCountRef.current = 0;
         setPollingEnabled(true);
-        pollingTimeoutRef.current = setTimeout(() => {
-          setPollingEnabled(false);
-          pollingTimeoutRef.current = null;
-        }, 3000);
       } else {
         // Disable polling when tab is not visible
         setPollingEnabled(false);
@@ -158,17 +159,9 @@ export default function TryOnList({ onClose }: TryOnListProps) {
       // Load fresh data first
       loadFromLocalStorage();
       
-      // Clear any existing timeout
-      if (pollingTimeoutRef.current) {
-        clearTimeout(pollingTimeoutRef.current);
-      }
-      
-      // Enable polling for 3 seconds
+      // Reset poll count and enable polling
+      pollCountRef.current = 0;
       setPollingEnabled(true);
-      pollingTimeoutRef.current = setTimeout(() => {
-        setPollingEnabled(false);
-        pollingTimeoutRef.current = null;
-      }, 3000);
     };
     
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -178,13 +171,6 @@ export default function TryOnList({ onClose }: TryOnListProps) {
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleFocus);
-      
-      // Clean up any polling timeout
-      if (pollingTimeoutRef.current) {
-        clearTimeout(pollingTimeoutRef.current);
-        pollingTimeoutRef.current = null;
-      }
-      
       setPollingEnabled(false);
     };
   }, []);
