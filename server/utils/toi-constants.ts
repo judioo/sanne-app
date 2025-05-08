@@ -36,3 +36,21 @@ export interface TOIJobPayload {
   error?: string;
   url?: string;
 }
+
+
+export const DressingRoomToTOIStatusMapper = {
+  "Sizing Item": [TOI_STATUS.PROCESSING_STARTED, TOI_STATUS.DOWNLOADING_IMAGES],
+  "Item Sized": [TOI_STATUS.PROCESSING_IMAGES],
+  "Adorning": [TOI_STATUS.CALLING_OPENAI, TOI_STATUS.RECEIVED_OPENAI_IMAGE],
+  "Mirror Check": [TOI_STATUS.PROCESSING_OPENAI_RESPONSE],
+  "Final Adjustments": [TOI_STATUS.UPLOADING_RESULT],
+  "Click To Reveal": [TOI_STATUS.COMPLETED],
+  "Gone": [TOI_STATUS.ERROR],
+}
+
+// invert in variable TOIToDressingRoomStatusMapper. for eahc value in the array of values, map the value to the key
+export const TOIToDressingRoomStatusMapper = Object.fromEntries(
+  Object.entries(DressingRoomToTOIStatusMapper).flatMap(([key, values]) =>
+    values.map((value) => [value, key])
+  )
+);
