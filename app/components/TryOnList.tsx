@@ -160,7 +160,7 @@ export default function TryOnList({ onClose }: TryOnListProps) {
       className="absolute top-12 right-0 w-72 bg-white rounded-lg shadow-lg border border-gray-200 animate-fade-in"
     >
       <div className="p-3 border-b flex justify-between items-center">
-        <h3 className="font-medium">Your Try-On Items</h3>
+        <h3 className="font-medium">Your Dressing Room</h3>
         <div className="flex items-center">
           <button 
             onClick={showClearConfirmation}
