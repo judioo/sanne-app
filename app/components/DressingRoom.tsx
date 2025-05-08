@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { XMarkIcon, ArrowUpTrayIcon, CameraIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import md5 from 'md5';
 import { trpc } from '@/utils/trpc';
+import { TOIToDressingRoomStatusMapper, TOI_STATUS } from '@/server/utils/toi-constants';
 
 type DressingRoomProps = {
   product: any; // Product details
@@ -17,8 +18,10 @@ type TryOnItem = {
   productId: number;
   productName: string;
   timestamp: string;
-  status: 'pending' | 'ready' | 'try again'| 'gone';
-  imageUrl?: string;
+  status: (typeof TOIToDressingRoomStatusMapper)[keyof typeof TOIToDressingRoomStatusMapper];
+  TOIID?: string; // Unique ID for try-on job
+  imageUrl?: string; // For ready items
+  dressStatus?: string; // Friendly status from server
   TOIUrl?: string;       // URL where the processed image will be available
   uploadImgUrl?: string; // URL where the uploaded image is stored
   imgMD5?: string;       // MD5 hash of the image for reference
@@ -82,9 +85,10 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
         
         // Check if there are any try-on items for this product
         setHasTryOnItems(productItems.length > 0);
-        
+        console.log(productItems);
+
         // Check if all items are ready (and there are items)
-        const allReady = productItems.length > 0 && productItems.every(item => item.status === 'ready');
+        const allReady = productItems.length > 0 && productItems.every(item => item.status === TOI_STATUS.COMPLETED);
         const noPending = !productItems.some(item => item.status === 'pending');
         
         // If all items are ready and none pending, collect the images

@@ -22,8 +22,10 @@ type serverData = {
   jobId: string;
   md5sum: string;
   processingDuration?: string;
+  productName: string;
   productId: number;
   result?: string;
+  imageUrl?: string;
   status: string;
   timestamp?: number;
   updatedAt: number;
@@ -128,16 +130,13 @@ export default function TryOnList({ onClose }: TryOnListProps) {
           const productInfo = productInfoMap[id];
           
           if (!productInfo) return null; // Skip if we don't have product info
-          console.log(serverData);
-          console.log("-------");
-          console.log(productInfo);
 
           return {
             TOIID: id,
             productId: productInfo.productId,
             productName: productInfo.productName,
             timestamp: productInfo.timestamp,
-            status: serverData?.dressStatus || 'Gone',
+            status: serverData?.status,
             imageUrl: serverData?.result || undefined,
             dressStatus: serverData?.dressStatus
           };
@@ -342,7 +341,7 @@ export default function TryOnList({ onClose }: TryOnListProps) {
             <div className="flex items-center space-x-3">
               {/* Small product avatar */}
               <div className="w-10 h-10 bg-gray-100 rounded-md relative flex-shrink-0 overflow-hidden">
-                {item.status === 'Click To Reveal' && item.imageUrl ? (
+                {item.status === TOI_STATUS.COMPLETED && item.imageUrl ? (
                   // Completed items show the processed image avatar
                   <Image 
                     src={item.imageUrl} 
@@ -354,13 +353,13 @@ export default function TryOnList({ onClose }: TryOnListProps) {
                   // Items in process show a spinner with color based on status
                   <div className="w-full h-full flex items-center justify-center">
                     <div className={`animate-spin h-5 w-5 border-2 border-t-transparent rounded-full ${  
-                      item.dressStatus === 'Gone' ? 'border-red-500' :
-                      item.dressStatus === 'Sizing Item' ? 'border-blue-500' :
-                      item.dressStatus === 'Item Sized' ? 'border-indigo-500' :
-                      item.dressStatus === 'Adorning' ? 'border-purple-500' :
-                      item.dressStatus === 'Mirror Check' ? 'border-pink-500' :
-                      item.dressStatus === 'Final Adjustments' ? 'border-orange-500' :
-                      item.status === 'Click To Reveal' ? 'border-green-500' :
+                      item.status === TOI_STATUS.ERROR ? 'border-red-500' :
+                      item.status === TOI_STATUS.PROCESSING_STARTED ? 'border-blue-500' :
+                      item.status === TOI_STATUS.DOWNLOADING_IMAGES ? 'border-indigo-500' :
+                      item.status === TOI_STATUS.PROCESSING_IMAGES ? 'border-purple-500' :
+                      item.status === TOI_STATUS.CALLING_OPENAI ? 'border-pink-500' :
+                      item.status === TOI_STATUS.PROCESSING_OPENAI_RESPONSE ? 'border-orange-500' :
+                      item.status === TOI_STATUS.COMPLETED ? 'border-green-500' :
                       'border-[#a1a561]'
                     }`}></div>
                   </div>
@@ -372,16 +371,16 @@ export default function TryOnList({ onClose }: TryOnListProps) {
                 <h4 className="font-medium text-sm mb-1 truncate">{item.productName}</h4>
                 <div className="flex items-center">
                   <span className={`px-2 py-0.5 text-xs rounded-full ${
-                    item.status === 'Gone' ? 'bg-red-100 text-red-800' :
-                    item.status === 'Sizing Item' ? 'bg-blue-100 text-blue-800' :
-                    item.status === 'Item Sized' ? 'bg-indigo-100 text-indigo-800' :
-                    item.status === 'Adorning' ? 'bg-purple-100 text-purple-800' :
-                    item.status === 'Mirror Check' ? 'bg-pink-100 text-pink-800' :
-                    item.status === 'Final Adjustments' ? 'bg-orange-100 text-orange-800' :
-                    item.status === 'Click To Reveal' ? 'bg-green-100 text-green-800' :
+                    item.status === TOI_STATUS.ERROR ? 'bg-red-100 text-red-800' :
+                    item.status === TOI_STATUS.PROCESSING_STARTED ? 'bg-blue-100 text-blue-800' :
+                    item.status === TOI_STATUS.DOWNLOADING_IMAGES ? 'bg-indigo-100 text-indigo-800' :
+                    item.status === TOI_STATUS.PROCESSING_IMAGES ? 'bg-purple-100 text-purple-800' :
+                    item.status === TOI_STATUS.CALLING_OPENAI ? 'bg-pink-100 text-pink-800' :
+                    item.status === TOI_STATUS.PROCESSING_OPENAI_RESPONSE ? 'bg-orange-100 text-orange-800' :
+                    item.status === TOI_STATUS.COMPLETED ? 'bg-green-100 text-green-800' :
                     'bg-yellow-100 text-yellow-800'
                   }`}>
-                    {item.status || 'Processing'}
+                    {item.dressStatus}
                   </span>
                   <span className="text-xs text-gray-500 ml-2">
                     {new Date(item.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
