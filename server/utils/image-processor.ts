@@ -9,6 +9,8 @@ import { QueryCache, toiPayload } from './redis';
 const utapi = new UTApi();
 
 const toiCache = QueryCache<toiPayload>();
+const e = process.env.NODE_ENV === "production" ? "p" : "d";
+
 
 // Initialize OpenAI client with extended timeout
 const openai = new OpenAI({
@@ -61,7 +63,8 @@ export async function processImageWithAI(
       return null;
     }
 
-    const TOIJobId = `${md5sum}-${productId}`;
+    const TOIJobId = `${e}-${md5sum}-${productId}`;
+    console.log(`TOI Job ID: ${TOIJobId}`);
     await toiCache.set({ jobId: TOIJobId, status: 'pending', productId, md5sum });
     
     // Download product images to memory
@@ -225,9 +228,6 @@ export async function processImageWithAI(
     const totalElapsedTime = (Date.now() - startTime) / 1000;
     console.log(`OpenAI processing completed in ${totalElapsedTime.toFixed(2)} seconds`);
     
-    // Compute the TOI URL - this is what we'll return regardless of success or failure
-    const toiUrl = `https://qjqqeunp2n.ufs.sh/f/${md5sum}-${productId}`;
-    
     // Handle fallback image if needed
     if (!b64Image || useUnavailableImage) {
       // Load fallback image from URL instead of from disk
@@ -260,14 +260,15 @@ export async function processImageWithAI(
       const file = new File([blob], fileName, { type: "image/png" });
       
       // Upload to UploadThing
-      console.log(`Uploading image to UploadThing (target: ${toiUrl})...`);
       const uploadResult = await utapi.uploadFiles(file, { customId: `${md5sum}-${productId}` });
       
       console.log('UploadThing upload result:', JSON.stringify(uploadResult, null, 2)); 
       console.log(`customId: ${md5sum}-${productId}`);
+      console.log(`TOI Job ID: ${TOIJobId}`);
       
       // Return the TOI URL after successful upload
       await toiCache.set({ jobId: TOIJobId, status: 'completed', productId, md5sum, uploadResult });
+      return uploadResult?.data?.ufsUrl || "uploadResult->data->ufsUrl";
     } catch (error) {
       console.error('Error uploading to UploadThing:', error);
       // Still return the TOI URL even if upload failed - the URL is predetermined

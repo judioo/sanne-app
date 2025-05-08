@@ -9,7 +9,7 @@
     "lint": "next lint",
     "upload-images": "node scripts/upload-images.mjs",
     "redis": "ts-node bin/redis-cli.ts",
-    "check-dressing-room": "ts-node bin/check-dressing-room.ts"
+    "check-dressing-room": "pnpx tsx bin/check-dressing-room.ts"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",

@@ -1,4 +1,4 @@
-#!/usr/bin/env ts-node
+#!/usr/bin/env tsx
 
 import { createTRPCProxyClient, httpBatchLink } from '@trpc/client';
 import { config } from 'dotenv';

@@ -17,7 +17,7 @@ type TryOnItem = {
   productId: number;
   productName: string;
   timestamp: string;
-  status: 'pending' | 'ready';
+  status: 'pending' | 'ready' | 'try again'| 'gone';
   imageUrl?: string;
   TOIUrl?: string;       // URL where the processed image will be available
   uploadImgUrl?: string; // URL where the uploaded image is stored
@@ -260,8 +260,7 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
   const { mutateAsync: uploadToDressingRoom } = trpc.products.toDressingRoom.useMutation({
     onSuccess: (result, variables) => {
       console.log('Image upload to dressing room successful');
-      console.log('TOIUrl:', result.TOIUrl);
-      console.log('uploadImgUrl:', result.uploadImgUrl);
+      console.log('TOIID:', result.TOIID);
       setUploadError(null);
       
       // Update localStorage with the result
@@ -274,7 +273,7 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
   });
   
   // Update localStorage with TRPC response
-  const updateTryOnItemWithResults = (result: { TOIUrl: string, uploadImgUrl: string }, imgMD5Hash: string) => {
+  const updateTryOnItemWithResults = (result: { TOIID: string }, imgMD5Hash: string) => {
     // Get existing try-on items
     const existingItems = localStorage.getItem('tryOnItems');
     if (existingItems) {
@@ -286,8 +285,7 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
           if (item.productId === product.id) {
             return {
               ...item,
-              TOIUrl: result.TOIUrl,
-              uploadImgUrl: result.uploadImgUrl,
+              TOIID: result.TOIID,
               imgMD5: imgMD5Hash
             };
           }

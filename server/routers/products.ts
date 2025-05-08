@@ -11,6 +11,7 @@ const utapi = new UTApi();
 
 // Initialize Redis cache for TOI jobs
 const toiCache = QueryCache<toiPayload>();
+const e = process.env.NODE_ENV === "production" ? "p" : "d";
 
 export const productsRouter = router({
   // Get all products with optional filtering and pagination
@@ -105,7 +106,8 @@ export const productsRouter = router({
       console.log(`Processing dressing room request for product ${input.productId}`);
         
       // Compute TOI ID
-      const TOIID = `${input.imgMD5}-${input.productId}`;
+      const TOIID = `${e}-${input.imgMD5}-${input.productId}`;
+      console.log(`TOI ID: ${TOIID}`);
        
       after( async () => {
         try {
@@ -164,7 +166,7 @@ export const productsRouter = router({
       const results = await Promise.all(
         input.jobIds.map(async (jobId) => {
           const result = await toiCache.get(jobId);
-          return { jobId, data: result };
+          return { jobId, result };
         })
       );
       
@@ -172,7 +174,7 @@ export const productsRouter = router({
       const statusMap: Record<string, any> = {};
       
       results.forEach(item => {
-        statusMap[item.jobId] = item.data;
+        statusMap[item.jobId] = item.result;
       });
       
       return statusMap;
