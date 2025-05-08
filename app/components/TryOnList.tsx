@@ -92,28 +92,49 @@ export default function TryOnList({ onClose }: TryOnListProps) {
   // Effect to update tryOnItems with status from server
   useEffect(() => {
     if (checkDressingRoom.data && tryOnItems.length > 0) {
-      const updatedItems = tryOnItems.map(item => {
-        if (item.TOIID && checkDressingRoom.data[item.TOIID]) {
-          const serverData = checkDressingRoom.data[item.TOIID];
-          
-          // Get the actual status from server data
-          const status = serverData.dressStatus || 'Gone';
-          let imageUrl = item.imageUrl;
-          
-          // If there's a URL and status is completed, use the URL
-          if (serverData.url && serverData.status === TOI_STATUS.COMPLETED) {
-            imageUrl = serverData.url;
-          }
-          
-          return {
-            ...item,
-            status,
-            imageUrl,
-            dressStatus: serverData.dressStatus || 'Processing'
+      // Extract all job IDs we're tracking
+      const jobIds = tryOnItems.filter(item => item.TOIID).map(item => item.TOIID!);
+      
+      // Create a map for quick lookup of product info by TOIID
+      const productInfoMap = tryOnItems.reduce((acc, item) => {
+        if (item.TOIID) {
+          acc[item.TOIID] = {
+            productId: item.productId,
+            productName: item.productName,
+            timestamp: item.timestamp
           };
         }
-        return item;
-      });
+        return acc;
+      }, {} as Record<string, { productId: number; productName: string; timestamp: string }>);
+      
+      // Process server data first - this is our authoritative source
+      const serverDataItems = jobIds
+        .filter(id => checkDressingRoom.data[id]) // Only include IDs that have data
+        .map(id => {
+          const serverData = checkDressingRoom.data[id];
+          const productInfo = productInfoMap[id];
+          
+          if (!productInfo) return null; // Skip if we don't have product info
+          
+          return {
+            TOIID: id,
+            productId: productInfo.productId,
+            productName: productInfo.productName,
+            timestamp: productInfo.timestamp,
+            status: serverData.dressStatus || 'Gone',
+            imageUrl: serverData.url || undefined,
+            dressStatus: serverData.dressStatus
+          };
+        })
+        .filter(Boolean) as TryOnItem[];
+      
+      // For items without server data, keep their existing state
+      const remainingItems = tryOnItems.filter(item => 
+        !item.TOIID || !checkDressingRoom.data[item.TOIID]
+      );
+      
+      // Combine server data with remaining items
+      const updatedItems = [...serverDataItems, ...remainingItems];
       
       // Only update state if there's a change
       if (JSON.stringify(updatedItems) !== JSON.stringify(tryOnItems)) {

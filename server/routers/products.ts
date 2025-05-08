@@ -184,10 +184,6 @@ export const productsRouter = router({
       jobIds: z.array(z.string())
     }))
     .query(async ({ input }) => {
-
-      console.log(JSON.stringify(TOIToDressingRoomStatusMapper, null, 2));
-
-
       console.log(`Checking status for ${input.jobIds.length} dressing room jobs`);
       
       // Query Redis for all job statuses in parallel
