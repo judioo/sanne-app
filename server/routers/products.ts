@@ -106,14 +106,50 @@ export const productsRouter = router({
       // Compute TOI ID
       const TOIID = `${e}-${input.imgMD5}-${input.productId}`;
       console.log(`Processing dressing room request for product ${input.productId} TOIID: ${TOIID}`);
-      toiCache.set({ jobId: TOIID, status: 'initialised', productId: input.productId, md5sum: input.imgMD5 });
+      
+      // Initialize job status in Redis
+      await toiCache.set({ 
+        jobId: TOIID, 
+        status: 'initialized', 
+        productId: input.productId, 
+        md5sum: input.imgMD5,
+        timestamp: Date.now() 
+      });
       
       try {
-        // Send the event to Inngest for background processing
+        // Upload the raw image to UploadThing first
+        console.log(`Uploading source image to UploadThing for TOIID: ${TOIID}`);
+        
+        const imageBuffer = Buffer.from(input.image.split(',')[1], 'base64');
+        const fileName = `${e}-${input.imgMD5}-${input.productId}.jpg`;
+        
+        // Create a blob and then a file
+        const blob = new Blob([imageBuffer], { type: 'image/jpeg' });
+        const file = new File([blob], fileName, { type: 'image/jpeg' });
+        
+        // Upload to UploadThing - API requires array for multi-file uploads
+        const uploadResult = await utapi.uploadFiles(file);
+        
+        if (!uploadResult.data) {
+          throw new Error('Failed to upload image to UploadThing');
+        }
+        
+        const imageUrl = uploadResult.data.ufsUrl;
+        console.log(`Source image uploaded to: ${imageUrl}`);
+        
+        // Update status
+        await toiCache.set({ 
+          jobId: TOIID, 
+          status: 'source-uploaded', 
+          sourceImageUrl: imageUrl,
+          timestamp: Date.now() 
+        });
+        
+        // Send the event to Inngest for background processing with image URL
         await inngest.send({
           name: 'image/process',
           data: {
-            image: input.image,
+            imageUrl: imageUrl,
             imgMD5: input.imgMD5,
             productId: input.productId,
             TOIJobId: TOIID
@@ -122,10 +158,15 @@ export const productsRouter = router({
         
         console.log(`Triggered Inngest job for processing image. TOIID: ${TOIID}`);
       } catch (error) {
-        console.error('Error triggering Inngest job:', error);
+        console.error('Error in pre-processing or triggering Inngest job:', error);
+        // Update Redis with error state
+        await toiCache.set({ 
+          jobId: TOIID, 
+          status: 'error-preprocessing', 
+          error: error instanceof Error ? error.message : 'Unknown error',
+          timestamp: Date.now() 
+        });
         // Don't throw the error - we still want to return the TOIID
-        // This follows the same pattern as before, where background processing errors
-        // didn't stop the response
       }
 
       // Return immediately with TOI ID
