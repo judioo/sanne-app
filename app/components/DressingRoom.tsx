@@ -85,7 +85,6 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
         
         // Check if there are any try-on items for this product
         setHasTryOnItems(productItems.length > 0);
-        console.log(productItems);
 
         // Check if all items are ready (and there are items)
         const allReady = productItems.length > 0 && productItems.every(item => item.status === TOI_STATUS.COMPLETED);

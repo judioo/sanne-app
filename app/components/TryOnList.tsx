@@ -389,6 +389,7 @@ export default function TryOnList({ onClose }: TryOnListProps) {
                       item.status === TOI_STATUS.CALLING_OPENAI ? 'border-pink-500' :
                       item.status === TOI_STATUS.PROCESSING_OPENAI_RESPONSE ? 'border-orange-500' :
                       item.status === TOI_STATUS.COMPLETED ? 'border-green-500' :
+                      item.status === TOI_STATUS.GONE ? 'border-red-500' :
                       'border-[#a1a561]'
                     }`}></div>
                   </div>
@@ -407,6 +408,7 @@ export default function TryOnList({ onClose }: TryOnListProps) {
                     item.status === TOI_STATUS.CALLING_OPENAI ? 'bg-pink-100 text-pink-800' :
                     item.status === TOI_STATUS.PROCESSING_OPENAI_RESPONSE ? 'bg-orange-100 text-orange-800' :
                     item.status === TOI_STATUS.COMPLETED ? 'bg-green-100 text-green-800' :
+                    item.dressStatus === TOI_STATUS.GONE ? 'bg-red-100 text-red-800' :
                     'bg-yellow-100 text-yellow-800'
                   }`}>
                     {item.dressStatus}

@@ -198,12 +198,16 @@ export const productsRouter = router({
       const statusMap: Record<string, any> = {};
       
       results.forEach(item => {
-        const dressStatus = TOIToDressingRoomStatusMapper[item?.result?.status] || 'Gone';
-        statusMap[item.jobId] = item.result ? { 
+        let { status, ...rest } = item?.result || {};
+        status = status || 'Gone';
+        const dressStatus = TOIToDressingRoomStatusMapper[status] || 'Gone';
+        statusMap[item.jobId] = item?.result ? { 
           dressStatus,
-          ...item.result
+          status,
+          ...rest
         } : { 
-          dressStatus
+          dressStatus,
+          status
         };
       });
       

@@ -22,6 +22,9 @@ export const TOI_STATUS = {
   // Final statuses
   COMPLETED: 'completed',
   ERROR: 'error',
+
+  // Unknown status
+  GONE: 'Gone',
 } as const;
 
 // Type for status values
@@ -45,7 +48,7 @@ export const DressingRoomToTOIStatusMapper = {
   "Mirror Check": [TOI_STATUS.PROCESSING_OPENAI_RESPONSE],
   "Final Adjustments": [TOI_STATUS.UPLOADING_RESULT],
   "Click To Reveal": [TOI_STATUS.COMPLETED],
-  "Gone": [TOI_STATUS.ERROR],
+  "Gone": [TOI_STATUS.ERROR, TOI_STATUS.GONE],
 }
 
 // invert in variable TOIToDressingRoomStatusMapper. for eahc value in the array of values, map the value to the key
