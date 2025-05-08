@@ -37,6 +37,7 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [hasReadyTryOns, setHasReadyTryOns] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [hasTryOnItems, setHasTryOnItems] = useState(false); // Track if there are existing try-on items
   const fileInputRef = useRef<HTMLInputElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   
@@ -78,6 +79,9 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
         
         // Filter for this product's items
         const productItems = items.filter(item => item.productId === product.id);
+        
+        // Check if there are any try-on items for this product
+        setHasTryOnItems(productItems.length > 0);
         
         // Check if all items are ready (and there are items)
         const allReady = productItems.length > 0 && productItems.every(item => item.status === 'ready');
@@ -505,13 +509,14 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
           <div className="absolute bottom-4 right-4 flex space-x-2">
             <div className="relative">
               <button 
-                onClick={triggerFileUpload}
-                onTouchStart={handlePhotoIconTouchStart}
-                onTouchEnd={handlePhotoIconTouchEnd}
-                onMouseDown={handlePhotoIconTouchStart}
-                onMouseUp={handlePhotoIconTouchEnd}
-                onMouseLeave={handlePhotoIconTouchEnd}
-                className="p-3 bg-[#a1a561] text-white rounded-full shadow-lg"
+                onClick={hasTryOnItems ? undefined : triggerFileUpload}
+                onTouchStart={hasTryOnItems ? undefined : handlePhotoIconTouchStart}
+                onTouchEnd={hasTryOnItems ? undefined : handlePhotoIconTouchEnd}
+                onMouseDown={hasTryOnItems ? undefined : handlePhotoIconTouchStart}
+                onMouseUp={hasTryOnItems ? undefined : handlePhotoIconTouchEnd}
+                onMouseLeave={hasTryOnItems ? undefined : handlePhotoIconTouchEnd}
+                className={`p-3 ${hasTryOnItems ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#a1a561] cursor-pointer'} text-white rounded-full shadow-lg`}
+                disabled={hasTryOnItems}
               >
                 <CameraIcon className="h-6 w-6" />
               </button>
@@ -563,8 +568,9 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
         {/* Dressing room button - Make sure it's not obscured */}
         <div className="mb-10">
           <button 
-            onClick={goToDressingRoom}
-            className="w-full py-4 bg-[#a1a561] text-white rounded-md font-medium relative overflow-hidden group"
+            onClick={hasTryOnItems ? undefined : goToDressingRoom}
+            disabled={hasTryOnItems}
+            className={`w-full py-4 ${hasTryOnItems ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#a1a561] cursor-pointer'} text-white rounded-md font-medium relative overflow-hidden group`}
           >
             <span className="relative z-10">To The Dressing Room</span>
             <div className="absolute inset-0 bg-gradient-to-r from-[#b1b571] to-[#91954f] 
