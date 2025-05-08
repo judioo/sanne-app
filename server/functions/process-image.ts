@@ -2,6 +2,7 @@ import { inngest } from '../utils/inngest';
 import { processImageWithAI } from '../utils/image-processor';
 import { products } from '../product-data';
 import { QueryCache, toiPayload } from '../utils/redis';
+import { TOI_STATUS } from '../utils/toi-constants';
 
 // Initialize Redis cache for TOI jobs
 const toiCache = QueryCache<toiPayload>();
@@ -29,7 +30,7 @@ export const processImageFunction = inngest.createFunction(
       // Update job status in Redis
       await toiCache.set({
         jobId: TOIJobId,
-        status: 'processing-started',
+        status: TOI_STATUS.PROCESSING_STARTED,
         productId,
         md5sum: imgMD5,
         timestamp: Date.now()

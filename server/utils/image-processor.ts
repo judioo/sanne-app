@@ -4,6 +4,7 @@ import { products } from '../product-data';
 import https from 'https';
 import sharp from 'sharp';
 import { QueryCache, toiPayload } from './redis';
+import { TOI_STATUS } from './toi-constants';
 
 // Initialize UploadThing API client
 const utapi = new UTApi();
@@ -62,7 +63,7 @@ export async function processImageWithAI(
     // Initialize job status
     await toiCache.set({ 
       jobId: TOIJobId, 
-      status: 'processing-started', 
+      status: TOI_STATUS.PROCESSING_STARTED, 
       productId, 
       md5sum,
       timestamp: Date.now() 
@@ -74,7 +75,7 @@ export async function processImageWithAI(
       console.error(`Product ID ${productId} not found`);
       await toiCache.set({ 
         jobId: TOIJobId, 
-        status: 'error', 
+        status: TOI_STATUS.ERROR, 
         error: 'Product not found', 
         productId, 
         md5sum,
@@ -88,7 +89,7 @@ export async function processImageWithAI(
       console.error(`Product ${productId} doesn't have required uploads`);
       await toiCache.set({ 
         jobId: TOIJobId, 
-        status: 'error', 
+        status: TOI_STATUS.ERROR, 
         error: 'Product missing required images', 
         productId, 
         md5sum,
@@ -103,7 +104,7 @@ export async function processImageWithAI(
       // All image processing happens in this try block
       await toiCache.set({ 
         jobId: TOIJobId, 
-        status: 'downloading-images', 
+        status: TOI_STATUS.DOWNLOADING_IMAGES, 
         productId, 
         md5sum,
         timestamp: Date.now() 
@@ -122,7 +123,7 @@ export async function processImageWithAI(
       // Update status to processing
       await toiCache.set({ 
         jobId: TOIJobId, 
-        status: 'processing-images', 
+        status: TOI_STATUS.PROCESSING_IMAGES, 
         productId, 
         md5sum,
         timestamp: Date.now() 
@@ -143,7 +144,7 @@ export async function processImageWithAI(
       // Update status before calling OpenAI
       await toiCache.set({ 
         jobId: TOIJobId, 
-        status: 'calling-openai', 
+        status: TOI_STATUS.CALLING_OPENAI, 
         productId, 
         md5sum,
         timestamp: Date.now() 
@@ -180,7 +181,7 @@ export async function processImageWithAI(
       // Update status after OpenAI call
       await toiCache.set({ 
         jobId: TOIJobId, 
-        status: 'processing-openai-response', 
+        status: TOI_STATUS.PROCESSING_OPENAI_RESPONSE, 
         productId, 
         md5sum,
         timestamp: Date.now() 
@@ -192,7 +193,7 @@ export async function processImageWithAI(
         console.error('OpenAI response invalid');
         await toiCache.set({ 
           jobId: TOIJobId, 
-          status: 'error', 
+          status: TOI_STATUS.ERROR, 
           error: 'OpenAI failed to create image', 
           productId, 
           md5sum,
@@ -206,7 +207,7 @@ export async function processImageWithAI(
         console.error('OpenAI returned no image data');
         await toiCache.set({ 
           jobId: TOIJobId, 
-          status: 'error', 
+          status: TOI_STATUS.ERROR, 
           error: 'No image data in OpenAI response', 
           productId, 
           md5sum,
@@ -222,7 +223,7 @@ export async function processImageWithAI(
       // Update status before uploading result
       await toiCache.set({ 
         jobId: TOIJobId, 
-        status: 'received-openai-image', 
+        status: TOI_STATUS.RECEIVED_OPENAI_IMAGE, 
         productId, 
         md5sum,
         timestamp: Date.now() 
@@ -241,7 +242,7 @@ export async function processImageWithAI(
         console.error('UploadThing returned no data');
         await toiCache.set({ 
           jobId: TOIJobId, 
-          status: 'error', 
+          status: TOI_STATUS.ERROR, 
           error: 'Upload failed - no data returned', 
           productId, 
           md5sum,
@@ -257,7 +258,7 @@ export async function processImageWithAI(
       // Update cache with success
       await toiCache.set({ 
         jobId: TOIJobId, 
-        status: 'completed', 
+        status: TOI_STATUS.COMPLETED, 
         url: finalImageUrl, 
         productId, 
         md5sum,
@@ -270,7 +271,7 @@ export async function processImageWithAI(
       console.error('Error in image processing:', processingError);
       await toiCache.set({ 
         jobId: TOIJobId, 
-        status: 'error', 
+        status: TOI_STATUS.ERROR, 
         error: processingError instanceof Error ? processingError.message : 'Unknown error in processing', 
         productId, 
         md5sum,
@@ -283,7 +284,7 @@ export async function processImageWithAI(
     const TOIJobId = `${e}-${md5sum}-${productId}`;
     await toiCache.set({ 
       jobId: TOIJobId, 
-      status: 'error', 
+      status: TOI_STATUS.ERROR, 
       error: error instanceof Error ? error.message : 'Unknown error', 
       productId, 
       md5sum,
