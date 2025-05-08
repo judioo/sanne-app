@@ -3,9 +3,12 @@ import OpenAI, { toFile } from 'openai';
 import { products } from '../product-data';
 import https from 'https';
 import sharp from 'sharp';
+import { QueryCache, toiPayload } from './redis';
 
 // Initialize UploadThing API client
 const utapi = new UTApi();
+
+const toiCache = QueryCache<toiPayload>();
 
 // Initialize OpenAI client with extended timeout
 const openai = new OpenAI({
@@ -57,6 +60,9 @@ export async function processImageWithAI(
       console.error(`Product ${productId} not found or doesn't have required uploads`);
       return null;
     }
+
+    const TOIJobId = `${md5sum}-${productId}`;
+    await toiCache.set({ jobId: TOIJobId, status: 'pending', productId, md5sum });
     
     // Download product images to memory
     console.log(`Downloading product images for ${productId}`);
@@ -115,7 +121,8 @@ export async function processImageWithAI(
     
     // Prepare all images in memory for OpenAI
     console.log('Preparing images for OpenAI...');
-    
+    await toiCache.set({ jobId: TOIJobId, status: 'preparing images', productId, md5sum });
+
     // Convert all images to proper file objects for OpenAI
     const images = await Promise.all([
       // User's image
@@ -166,7 +173,8 @@ export async function processImageWithAI(
     try {
       // Send all images to OpenAI with extended timeout
       console.log('Calling OpenAI API with multiple images...');
-      
+      await toiCache.set({ jobId: TOIJobId, status: 'calling OpenAI', productId, md5sum });
+
       const prompt = `Replace the model's outfit in the photo with a new one. 
       Pay particular attention to the details of the dress (e.g., straps, flow, and hang). 
       I've provided back and front images of the garment so you know how it looks and flows. 
@@ -195,12 +203,15 @@ export async function processImageWithAI(
           // Convert base64 string to Buffer
           b64Image = Buffer.from(base64Data, 'base64');
           console.log(`Received OpenAI image as base64, size: ${b64Image.length} bytes`);
+          await toiCache.set({ jobId: TOIJobId, status: 'received OpenAI image', productId, md5sum });
         } else {
           console.error('No base64 data received from OpenAI');
+          await toiCache.set({ jobId: TOIJobId, status: 'no base64 data received from OpenAI', productId, md5sum });
           useUnavailableImage = true;
         }
       } else {
         console.error('OpenAI response invalid, using fallback image');
+        await toiCache.set({ jobId: TOIJobId, status: 'OpenAI response invalid, using fallback image', productId, md5sum });
         useUnavailableImage = true;
       }
     } catch (error) {
@@ -253,26 +264,17 @@ export async function processImageWithAI(
       const uploadResult = await utapi.uploadFiles(file, { customId: `${md5sum}-${productId}` });
       
       console.log('UploadThing upload result:', JSON.stringify(uploadResult, null, 2)); 
+      console.log(`customId: ${md5sum}-${productId}`);
       
       // Return the TOI URL after successful upload
-      return toiUrl;
+      await toiCache.set({ jobId: TOIJobId, status: 'completed', productId, md5sum, uploadResult });
     } catch (error) {
       console.error('Error uploading to UploadThing:', error);
       // Still return the TOI URL even if upload failed - the URL is predetermined
-      return toiUrl;
+      await toiCache.set({ jobId: TOIJobId, status: 'failed', productId, md5sum });
     }
-    
-    // No file cleanup needed since we're working in memory
-    console.log('All processing completed in memory, no files to clean up');
-    // Note: tempDir might still be created if it didn't exist before, but no files are written to it
-    
-    console.log('Image processing completed successfully');
-    console.log(`Final TOIUrl: ${toiUrl}`);
-    return toiUrl;
   } catch (error) {
     console.error('Error in processImageWithAI:', error);
     return null;
   }
 }
-
-// Function no longer needed as we're doing everything in memory

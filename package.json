@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "upload-images": "node scripts/upload-images.mjs"
+    "upload-images": "node scripts/upload-images.mjs",
+    "redis": "ts-node bin/redis-cli.ts"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
@@ -17,15 +18,22 @@
     "@trpc/react-query": "^11.1.2",
     "@trpc/server": "^11.1.2",
     "@types/md5": "^2.3.5",
+    "@upstash/redis": "^1.34.9",
+    "chalk": "^4.1.2",
+    "command": "^1.1.1",
+    "commander": "^13.1.0",
     "dotenv": "^16.5.0",
     "md5": "^2.3.0",
     "next": "15.3.1",
     "openai": "^4.97.0",
+    "path": "^0.12.7",
     "posthog-js": "^1.239.1",
     "posthog-node": "^4.17.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "readline": "^1.3.0",
     "sharp": "^0.34.1",
+    "ts-node": "^10.9.2",
     "uploadthing": "^7.6.0",
     "zod": "^3.24.4"
   },

@@ -100,8 +100,8 @@ export const productsRouter = router({
     .mutation(async ({ input }) => {
       console.log(`Processing dressing room request for product ${input.productId}`);
         
-      // Compute TOI URL
-      const toiUrl = `https://qjqqeunp2n.ufs.sh/f/${input.imgMD5}-${input.productId}`;
+      // Compute TOI ID
+      const TOIID = `${input.imgMD5}-${input.productId}`;
        
       after( async () => {
         try {
@@ -136,17 +136,15 @@ export const productsRouter = router({
               const processingEndTime = new Date().toISOString();
               console.error(`[${processingEndTime}] ❌ Error in background processing for product ${input.productId}:`, error);
             });
-          
-          
         } catch (error) {
           console.error('Error in toDressingRoom:', error);
           throw error;
         }
       });
 
-      // Return immediately with TOI URL and upload URL
+      // Return immediately with TOI ID
       return {
-        TOIUrl: toiUrl
+        TOIID: TOIID
       };
     }),
 });
