@@ -106,6 +106,7 @@ export const productsRouter = router({
       // Compute TOI ID
       const TOIID = `${e}-${input.imgMD5}-${input.productId}`;
       console.log(`Processing dressing room request for product ${input.productId} TOIID: ${TOIID}`);
+      toiCache.set({ jobId: TOIID, status: 'initialised', productId: input.productId, md5sum: input.imgMD5 });
       
       try {
         // Send the event to Inngest for background processing
