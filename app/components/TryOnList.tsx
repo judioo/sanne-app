@@ -17,6 +17,18 @@ type TryOnItem = {
   dressStatus?: string; // Friendly status from server
 };
 
+type serverData = {
+  dressStatus?: string;
+  jobId: string;
+  md5sum: string;
+  processingDuration?: string;
+  productId: number;
+  result?: string;
+  status: string;
+  timestamp?: number;
+  updatedAt: number;
+}
+
 type TryOnListProps = {
   onClose: () => void;
 };
@@ -25,6 +37,7 @@ export default function TryOnList({ onClose }: TryOnListProps) {
   const [tryOnItems, setTryOnItems] = useState<TryOnItem[]>([]);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [pollingEnabled, setPollingEnabled] = useState(false);
+  const [serverItems, setServerItems] = useState<serverData[]>([]);
   const router = useRouter();
   const listRef = useRef<HTMLDivElement>(null);
   
@@ -111,19 +124,22 @@ export default function TryOnList({ onClose }: TryOnListProps) {
       const serverDataItems = jobIds
         .filter(id => checkDressingRoom.data[id]) // Only include IDs that have data
         .map(id => {
-          const serverData = checkDressingRoom.data[id];
+          const serverData: serverData = checkDressingRoom.data[id];
           const productInfo = productInfoMap[id];
           
           if (!productInfo) return null; // Skip if we don't have product info
-          
+          console.log(serverData);
+          console.log("-------");
+          console.log(productInfo);
+
           return {
             TOIID: id,
             productId: productInfo.productId,
             productName: productInfo.productName,
             timestamp: productInfo.timestamp,
-            status: serverData.dressStatus || 'Gone',
-            imageUrl: serverData.url || undefined,
-            dressStatus: serverData.dressStatus
+            status: serverData?.dressStatus || 'Gone',
+            imageUrl: serverData?.result || undefined,
+            dressStatus: serverData?.dressStatus
           };
         })
         .filter(Boolean) as TryOnItem[];
@@ -133,14 +149,59 @@ export default function TryOnList({ onClose }: TryOnListProps) {
         !item.TOIID || !checkDressingRoom.data[item.TOIID]
       );
       
+      setServerItems(serverDataItems);
       // Combine server data with remaining items
       const updatedItems = [...serverDataItems, ...remainingItems];
       
-      // Only update state if there's a change
-      if (JSON.stringify(updatedItems) !== JSON.stringify(tryOnItems)) {
-        setTryOnItems(updatedItems);
-        // Update localStorage with latest status
-        localStorage.setItem('tryOnItems', JSON.stringify(updatedItems));
+      // Always update the localStorage with server items first
+      if (serverDataItems.length > 0) {
+        // Create properly formatted items for localStorage
+        const storageItems = serverDataItems.map(item => ({
+          productId: item.productId,
+          productName: item.productName,
+          timestamp: item.timestamp,
+          status: item.status,
+          TOIID: item.TOIID,
+          imageUrl: item.imageUrl,
+          dressStatus: item.dressStatus
+        }));
+        
+        // Get existing items from localStorage
+        const existingItems = localStorage.getItem('tryOnItems');
+        let allItems = [];
+        
+        if (existingItems) {
+          try {
+            // Parse existing items
+            const parsedItems = JSON.parse(existingItems) as TryOnItem[];
+            
+            // Filter out items that we now have server data for
+            const filteredItems = parsedItems.filter((item: TryOnItem) => 
+              !item.TOIID || !serverDataItems.some(si => si.TOIID === item.TOIID)
+            );
+            
+            // Combine with server items
+            allItems = [...storageItems, ...filteredItems];
+          } catch (e) {
+            console.error('Error parsing localStorage items:', e);
+            allItems = storageItems;
+          }
+        } else {
+          allItems = storageItems;
+        }
+        
+        // Sort by timestamp (newest first)
+        allItems.sort((a, b) => {
+          return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+        });
+        
+        // Update localStorage with all items
+        localStorage.setItem('tryOnItems', JSON.stringify(allItems));
+        
+        // Only update state if there's a change
+        if (JSON.stringify(updatedItems) !== JSON.stringify(tryOnItems)) {
+          setTryOnItems(updatedItems);
+        }
       }
     }
   }, [checkDressingRoom.data, tryOnItems]);
@@ -272,7 +333,7 @@ export default function TryOnList({ onClose }: TryOnListProps) {
       )}
       
       <div className="max-h-80 overflow-y-auto">
-        {tryOnItems.map((item) => (
+        {serverItems.map((item) => (
           <div 
             key={item.productId} 
             className="p-3 border-b last:border-b-0 hover:bg-gray-50 cursor-pointer"
@@ -293,12 +354,12 @@ export default function TryOnList({ onClose }: TryOnListProps) {
                   // Items in process show a spinner with color based on status
                   <div className="w-full h-full flex items-center justify-center">
                     <div className={`animate-spin h-5 w-5 border-2 border-t-transparent rounded-full ${  
-                      item.status === 'Gone' ? 'border-red-500' :
-                      item.status === 'Sizing Item' ? 'border-blue-500' :
-                      item.status === 'Item Sized' ? 'border-indigo-500' :
-                      item.status === 'Adorning' ? 'border-purple-500' :
-                      item.status === 'Mirror Check' ? 'border-pink-500' :
-                      item.status === 'Final Adjustments' ? 'border-orange-500' :
+                      item.dressStatus === 'Gone' ? 'border-red-500' :
+                      item.dressStatus === 'Sizing Item' ? 'border-blue-500' :
+                      item.dressStatus === 'Item Sized' ? 'border-indigo-500' :
+                      item.dressStatus === 'Adorning' ? 'border-purple-500' :
+                      item.dressStatus === 'Mirror Check' ? 'border-pink-500' :
+                      item.dressStatus === 'Final Adjustments' ? 'border-orange-500' :
                       item.status === 'Click To Reveal' ? 'border-green-500' :
                       'border-[#a1a561]'
                     }`}></div>
