@@ -55,8 +55,8 @@ export default function TryOnList({ onClose }: TryOnListProps) {
     }
   );
 
-  // Load try-on items from localStorage
-  useEffect(() => {
+  // Function to load try-on items from localStorage
+  const loadFromLocalStorage = () => {
     // Get items from localStorage
     const storedItems = localStorage.getItem('tryOnItems');
     let parsedItems: TryOnItem[] = [];
@@ -102,6 +102,35 @@ export default function TryOnList({ onClose }: TryOnListProps) {
     setTryOnItems(parsedItems);
     // Enable polling if we have items
     setPollingEnabled(parsedItems.length > 0);
+  };
+  
+  // Load try-on items from localStorage on initial render
+  useEffect(() => {
+    loadFromLocalStorage();
+  }, []);
+  
+  // Set up listeners for visibility and focus changes
+  useEffect(() => {
+    // This handler will reload data when the page becomes visible again
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        loadFromLocalStorage();
+      }
+    };
+    
+    // This handler will reload data when window gets focus
+    const handleFocus = () => {
+      loadFromLocalStorage();
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+    
+    // Clean up event listeners on unmount
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, []);
 
   // Effect to update tryOnItems with status from server
