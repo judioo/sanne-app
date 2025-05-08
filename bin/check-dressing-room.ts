@@ -41,7 +41,8 @@ program
   .version('0.1.0')
   .option('-p, --prod', 'Use production environment', false)
   .option('-j, --job-ids <ids...>', 'Job IDs to check (comma-separated or multiple arguments)')
-  .option('-w, --watch', 'Watch mode - continuously check job status every 5 seconds', false);
+  .option('-w, --watch', 'Watch mode - continuously check job status every 5 seconds', false)
+  .option('-v, --verbose', 'Verbose mode - pretty print request and response data', false);
 
 program.parse();
 
@@ -95,8 +96,26 @@ console.log(chalk.green(jobIds.map(id => `  - ${id}`).join('\n')));
 async function checkJobs() {
   try {
     const startTime = Date.now();
-    const results = await trpc.products.checkDressingRoom.query({ jobIds });
+    const requestData = { jobIds };
+    
+    // Log request in verbose mode
+    if (options.verbose) {
+      console.log(chalk.yellow('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'));
+      console.log(chalk.yellow.bold('📤 REQUEST:'));
+      console.log(chalk.yellow('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'));
+      prettyPrint(requestData, 'Request Data', chalk.cyan);
+    }
+    
+    const results = await trpc.products.checkDressingRoom.query(requestData);
     const duration = Date.now() - startTime;
+    
+    // Log response in verbose mode
+    if (options.verbose) {
+      console.log(chalk.green('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'));
+      console.log(chalk.green.bold(`📥 RESPONSE: (${duration}ms)`));
+      console.log(chalk.green('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'));
+      prettyPrint(results, `Response Data (${duration}ms)`, chalk.green);
+    }
     
     console.log(chalk.blue(`\nResults (query took ${duration}ms):`));
     
@@ -150,6 +169,20 @@ function formatFileSize(bytes: number): string {
   if (bytes < 1024) return bytes + ' B';
   else if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
   else return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+}
+
+// Pretty print an object with syntax highlighting
+function prettyPrint(obj: any, title: string, color: typeof chalk.cyan) {
+  console.log(color.bold(`\n${title}:`));
+  const json = JSON.stringify(obj, null, 2);
+  
+  // Highlight different parts of the JSON
+  const highlighted = json
+    .replace(/"([^"]+)":/g, (_, p1) => chalk.magenta(`"${p1}":`)) // Keys
+    .replace(/: "([^"]+)"/g, (_, p1) => `: ${chalk.green(`"${p1}"`)}`); // String values
+  
+  console.log(highlighted);
+  console.log();
 }
 
 // Run once or in watch mode
