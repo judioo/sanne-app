@@ -4,13 +4,17 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { XMarkIcon, CameraIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { TOI_STATUS } from '@/server/utils/toi-constants';
+import { trpc } from '@/utils/trpc';
 
 type TryOnItem = {
   productId: number;
   productName: string;
   timestamp: string;
   status: 'pending' | 'ready';
+  TOIID?: string; // Unique ID for try-on job
   imageUrl?: string; // For ready items
+  dressStatus?: string; // Friendly status from server
 };
 
 type TryOnListProps = {
@@ -20,8 +24,21 @@ type TryOnListProps = {
 export default function TryOnList({ onClose }: TryOnListProps) {
   const [tryOnItems, setTryOnItems] = useState<TryOnItem[]>([]);
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const [pollingEnabled, setPollingEnabled] = useState(false);
   const router = useRouter();
   const listRef = useRef<HTMLDivElement>(null);
+  
+  // Keep track of our polling interval
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Custom hook for calling checkDressingRoom
+  const checkDressingRoom = trpc.products.checkDressingRoom.useQuery(
+    { jobIds: tryOnItems.filter(item => item.TOIID).map(item => item.TOIID!) },
+    { 
+      enabled: pollingEnabled && tryOnItems.some(item => item.TOIID),
+      refetchInterval: 2000, // Poll every 2 seconds
+    }
+  );
 
   // Load try-on items from localStorage
   useEffect(() => {
@@ -36,18 +53,13 @@ export default function TryOnList({ onClose }: TryOnListProps) {
         
         // Process each item
         parsedItems = items.map((item: TryOnItem) => {
-          const timestamp = new Date(item.timestamp);
-          const minutesSinceCreated = (now.getTime() - timestamp.getTime()) / (1000 * 60);
-          
-          // If more than 1 minute old, mark as ready (for demo purposes)
-          // In a real app, this would be determined by a server response
-          if (minutesSinceCreated > 1 && item.status === 'pending') {
-            return {
-              ...item,
-              status: 'ready',
-              // For demo purposes, use a sample image as the "processed" image
-              imageUrl: '/lena-with-clothes.jpeg'
-            };
+          // Create JobID in the same format as server if not already present
+          if (!item.TOIID && item.productId) {
+            const md5 = item.imageUrl?.split('/').pop()?.split('-')[0];
+            if (md5) {
+              const env = process.env.NODE_ENV === 'production' ? 'p' : 'd';
+              item.TOIID = `${env}-${md5}-${item.productId}`;
+            }
           }
           
           return item;
@@ -73,8 +85,46 @@ export default function TryOnList({ onClose }: TryOnListProps) {
     }
     
     setTryOnItems(parsedItems);
+    // Enable polling if we have items
+    setPollingEnabled(parsedItems.length > 0);
   }, []);
 
+  // Effect to update tryOnItems with status from server
+  useEffect(() => {
+    if (checkDressingRoom.data && tryOnItems.length > 0) {
+      const updatedItems = tryOnItems.map(item => {
+        if (item.TOIID && checkDressingRoom.data[item.TOIID]) {
+          const serverData = checkDressingRoom.data[item.TOIID];
+          
+          // Update status based on server data
+          let status: 'pending' | 'ready' = 'pending';
+          let imageUrl = item.imageUrl;
+          
+          // If there's a URL, it's ready to show
+          if (serverData.url && serverData.status === TOI_STATUS.COMPLETED) {
+            status = 'ready';
+            imageUrl = serverData.url;
+          }
+          
+          return {
+            ...item,
+            status,
+            imageUrl,
+            dressStatus: serverData.dressStatus || 'Processing'
+          };
+        }
+        return item;
+      });
+      
+      // Only update state if there's a change
+      if (JSON.stringify(updatedItems) !== JSON.stringify(tryOnItems)) {
+        setTryOnItems(updatedItems);
+        // Update localStorage with latest status
+        localStorage.setItem('tryOnItems', JSON.stringify(updatedItems));
+      }
+    }
+  }, [checkDressingRoom.data, tryOnItems]);
+  
   // Handle click outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -232,12 +282,20 @@ export default function TryOnList({ onClose }: TryOnListProps) {
                 <h4 className="font-medium text-sm mb-1 truncate">{item.productName}</h4>
                 <div className="flex items-center">
                   {item.status === 'pending' ? (
-                    <span className="px-2 py-0.5 text-xs bg-yellow-100 text-yellow-800 rounded-full">
-                      Processing
+                    <span className={`px-2 py-0.5 text-xs rounded-full ${
+                      item.dressStatus === 'Gone' ? 'bg-red-100 text-red-800' :
+                      item.dressStatus === 'Sizing Item' ? 'bg-blue-100 text-blue-800' :
+                      item.dressStatus === 'Item Sized' ? 'bg-indigo-100 text-indigo-800' :
+                      item.dressStatus === 'Adorning' ? 'bg-purple-100 text-purple-800' :
+                      item.dressStatus === 'Mirror Check' ? 'bg-pink-100 text-pink-800' :
+                      item.dressStatus === 'Final Adjustments' ? 'bg-orange-100 text-orange-800' :
+                      'bg-yellow-100 text-yellow-800'
+                    }`}>
+                      {item.dressStatus || 'Processing'}
                     </span>
                   ) : (
                     <span className="px-2 py-0.5 text-xs bg-green-100 text-green-800 rounded-full">
-                      Ready
+                      {item.dressStatus || 'Ready'}
                     </span>
                   )}
                   <span className="text-xs text-gray-500 ml-2">

@@ -5,6 +5,7 @@ import { UTApi } from 'uploadthing/server';
 import { processImageWithAI } from '../utils/image-processor';
 import { QueryCache, toiPayload } from '../utils/redis';
 import { inngest } from '../utils/inngest';
+import { TOI_STATUS } from '../utils/toi-constants';
 
 // Initialize UploadThing API
 const utapi = new UTApi();
@@ -12,6 +13,23 @@ const utapi = new UTApi();
 // Initialize Redis cache for TOI jobs
 const toiCache = QueryCache<toiPayload>();
 const e = process.env.NODE_ENV === "production" ? "p" : "d";
+
+const DressingRoomToTOIStatusMapper = {
+  "Sizing Item": [TOI_STATUS.PROCESSING_STARTED, TOI_STATUS.DOWNLOADING_IMAGES],
+  "Item Sized": [TOI_STATUS.PROCESSING_IMAGES],
+  "Adorning": [TOI_STATUS.CALLING_OPENAI, TOI_STATUS.RECEIVED_OPENAI_IMAGE],
+  "Mirror Check": [TOI_STATUS.PROCESSING_OPENAI_RESPONSE],
+  "Final Adjustments": [TOI_STATUS.UPLOADING_RESULT],
+  "Click To Reveal": [TOI_STATUS.COMPLETED],
+  "Gone": [TOI_STATUS.ERROR],
+}
+
+// invert in variable TOIToDressingRoomStatusMapper. for eahc value in the array of values, map the value to the key
+const TOIToDressingRoomStatusMapper = Object.fromEntries(
+  Object.entries(DressingRoomToTOIStatusMapper).flatMap(([key, values]) =>
+    values.map((value) => [value, key])
+  )
+);
 
 export const productsRouter = router({
   // Get all products with optional filtering and pagination
@@ -181,6 +199,10 @@ export const productsRouter = router({
       jobIds: z.array(z.string())
     }))
     .query(async ({ input }) => {
+
+      console.log(JSON.stringify(TOIToDressingRoomStatusMapper, null, 2));
+
+
       console.log(`Checking status for ${input.jobIds.length} dressing room jobs`);
       
       // Query Redis for all job statuses in parallel
@@ -195,7 +217,13 @@ export const productsRouter = router({
       const statusMap: Record<string, any> = {};
       
       results.forEach(item => {
-        statusMap[item.jobId] = item.result;
+        const dressStatus = TOIToDressingRoomStatusMapper[item?.result?.status] || 'Gone';
+        statusMap[item.jobId] = item.result ? { 
+          dressStatus,
+          ...item.result
+        } : { 
+          dressStatus
+        };
       });
       
       return statusMap;
