@@ -4,9 +4,13 @@ import { router, publicProcedure } from '../trpc';
 import { products, getAllCollections } from '../product-data';
 import { UTApi } from 'uploadthing/server';
 import { processImageWithAI } from '../utils/image-processor';
+import { QueryCache, toiPayload } from '../utils/redis';
 
 // Initialize UploadThing API
 const utapi = new UTApi();
+
+// Initialize Redis cache for TOI jobs
+const toiCache = QueryCache<toiPayload>();
 
 export const productsRouter = router({
   // Get all products with optional filtering and pagination
@@ -146,5 +150,31 @@ export const productsRouter = router({
       return {
         TOIID: TOIID
       };
+    }),
+
+  // Check status of multiple dressing room jobs
+  checkDressingRoom: publicProcedure
+    .input(z.object({
+      jobIds: z.array(z.string())
+    }))
+    .query(async ({ input }) => {
+      console.log(`Checking status for ${input.jobIds.length} dressing room jobs`);
+      
+      // Query Redis for all job statuses in parallel
+      const results = await Promise.all(
+        input.jobIds.map(async (jobId) => {
+          const result = await toiCache.get(jobId);
+          return { jobId, data: result };
+        })
+      );
+      
+      // Convert array of results to a keyed object
+      const statusMap: Record<string, any> = {};
+      
+      results.forEach(item => {
+        statusMap[item.jobId] = item.data;
+      });
+      
+      return statusMap;
     }),
 });
