@@ -190,10 +190,10 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
     const timer = setTimeout(() => {
       setShowTooltip(true);
       
-      // Auto-hide tooltip after 3 seconds
+      // Auto-hide tooltip after 7 seconds
       const hideTimer = setTimeout(() => {
         setShowTooltip(false);
-      }, 3000);
+      }, 7000);
       
       setTooltipTimeout(hideTimer);
     }, 500);
@@ -534,11 +534,11 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
                   }}
                 >
                   <div className="relative">
-                    <h3 className="font-medium text-base mb-1">Personalize Your Experience</h3>
+                    <h3 className="font-medium text-base mb-1">Personalise Your Experience</h3>
                     <p className="text-sm mb-2">
                       {uploadedImage 
                         ? "You're using your own photo. Want to try a different one?" 
-                        : "See how this would look on you! Upload your photo for a more personalized experience."}
+                        : "See how this would look on you! Upload your photo for a more personalised experience."}
                     </p>
                     <button 
                       onClick={triggerFileUpload}
