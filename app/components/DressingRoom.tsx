@@ -307,6 +307,30 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
     }
   };
   
+  // Load default image and convert to base64
+  const loadDefaultImage = () => {
+    return new Promise<string>((resolve, reject) => {
+      fetch('/lena.jpeg')
+        .then(response => response.blob())
+        .then(blob => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const base64data = reader.result as string;
+            resolve(base64data);
+          };
+          reader.onerror = () => {
+            reject(new Error('Failed to read default image'));
+          };
+          reader.readAsDataURL(blob);
+        })
+        .catch(error => {
+          console.error('Error loading default image:', error);
+          setUploadError('Failed to load default image. Please try again.');
+          reject(error);
+        });
+    });
+  };
+
   // Upload image to server using TRPC
   const uploadImageToServer = async (base64Image: string) => {
     try {
@@ -327,6 +351,20 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
       setUploadError('Failed to start image processing. Please try again.');
     }
   };
+  
+  // Process image upload - use uploaded image or default
+  const processImageUpload = async () => {
+    if (uploadedImage) {
+      uploadImageToServer(uploadedImage);
+    } else {
+      try {
+        const defaultImage = await loadDefaultImage();
+        uploadImageToServer(defaultImage);
+      } catch (error) {
+        console.error('Error processing default image:', error);
+      }
+    }
+  };
 
   const SHOW_MESSAGE_DURATION = 6000;
   // Go to dressing room with animation - updated to include image upload
@@ -336,10 +374,8 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
       // Add try-on item to localStorage
       addTryOnItem();
       
-      // Upload image in the background if available
-      if (uploadedImage) {
-        uploadImageToServer(uploadedImage);
-      }
+      // Process image upload (uses default if none uploaded)
+      processImageUpload();
       
       // Auto close after a few seconds
       setTimeout(() => {
@@ -368,10 +404,8 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
         // Add try-on item to localStorage and get reference to it
         const newTryOnItem = addTryOnItem();
         
-        // Upload image to server if available
-        if (uploadedImage) {
-          uploadImageToServer(uploadedImage);
-        }
+        // Process image upload (uses default if none uploaded)
+        processImageUpload();
         
         // Auto close after a few seconds
         setTimeout(() => {
