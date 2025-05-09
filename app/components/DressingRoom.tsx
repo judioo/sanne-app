@@ -499,7 +499,7 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
                         We're processing your try-on request for {product.name}.
                       </p>
                       <p className="text-gray-600 text-sm mt-3">
-                        Check the garment icon to see your items when they're ready.
+                        Check the garment icon to see your items when they're ready. Dressing normally takes <span className="font-bold text-[#a1a561]">up to 3 minutes</span> to complete.
                       </p>
                     </div>
                   </div>
