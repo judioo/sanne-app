@@ -4,6 +4,9 @@ import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { trpc } from "../../../utils/trpc";
+import GarmentIcon from "../../components/GarmentIcon";
+import TryOnList from "../../components/TryOnList";
+import { TOI_STATUS } from "../../../server/utils/toi-constants";
 
 export default function CollectionLayout({
   children,
@@ -14,10 +17,61 @@ export default function CollectionLayout({
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [showTryOnList, setShowTryOnList] = useState(false);
+  const [hasPendingTryOn, setHasPendingTryOn] = useState(false);
+  const [pendingTryOnCount, setPendingTryOnCount] = useState(0);
+  const [garmentColor, setGarmentColor] = useState('#a1a561');
   const searchInputRef = useRef<HTMLInputElement>(null);
   
   // Fetch all collections for the side menu
   const { data: collections = [] } = trpc.products.getCollections.useQuery();
+  
+  // Toggle try-on list display
+  const toggleTryOnList = () => {
+    setShowTryOnList(!showTryOnList);
+  };
+  
+  // Close try-on list
+  const closeTryOnList = () => {
+    setShowTryOnList(false);
+  };
+  
+  // Check localStorage for pending try-on items
+  useEffect(() => {
+    const checkTryOnItems = () => {
+      const storedItems = localStorage.getItem('tryOnItems');
+      if (storedItems) {
+        try {
+          const items = JSON.parse(storedItems);
+          
+          // Filter out old items (older than 24 hours)
+          const now = new Date();
+          const filteredItems = items.filter((item: any) => {
+            const timestamp = new Date(item.timestamp);
+            const hoursSinceCreated = (now.getTime() - timestamp.getTime()) / (1000 * 60 * 60);
+            return hoursSinceCreated < 24;
+          });
+          
+          // Check for pending items
+          const pendingItems = filteredItems.filter((item: any) => item.status !== TOI_STATUS.COMPLETED);
+          setHasPendingTryOn(pendingItems.length > 0);
+          setPendingTryOnCount(pendingItems.length);
+          
+          // Set color based on pending items
+          setGarmentColor(pendingItems.length > 0 ? '#5820e4' : '#a1a561');
+        } catch (e) {
+          console.error('Error checking try-on items:', e);
+        }
+      }
+    };
+    
+    // Check initially and set up interval
+    checkTryOnItems();
+    const interval = setInterval(checkTryOnItems, 5000);
+    
+    // Clean up
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     // Check if the device is mobile
@@ -110,7 +164,7 @@ export default function CollectionLayout({
             />
           </Link>
           
-          <div className="flex gap-2">
+          <div className="flex space-x-4">
             <button 
               className="text-gray-700"
               onClick={() => setIsSearchOpen(!isSearchOpen)}
@@ -119,11 +173,31 @@ export default function CollectionLayout({
                 <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
               </svg>
             </button>
-            <button className="text-gray-700">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6a3.75 3.75 0 1 0-7.5 0v4.5m11.356-1.993 1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 0 1-1.12-1.243l1.264-12A1.125 1.125 0 0 1 5.513 7.5h12.974c.576 0 1.059.435 1.119 1.007ZM8.625 10.5a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm7.5 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
-              </svg>
-            </button>
+            <div className="relative">
+              <button 
+                onClick={toggleTryOnList}
+                className="text-gray-700 relative"
+              >
+                {/* Garment icon with notification dot */}
+                <GarmentIcon color={garmentColor} className="w-6 h-6" />
+                
+                {/* Notification dot for pending try-on */}
+                {hasPendingTryOn && (
+                  <div className="absolute -top-1 -right-1 bg-red-500 rounded-full flex items-center justify-center">
+                    {pendingTryOnCount > 1 ? (
+                      <span className="text-white text-[10px] font-bold w-4 h-4 flex items-center justify-center">
+                        {pendingTryOnCount > 9 ? '9+' : pendingTryOnCount}
+                      </span>
+                    ) : (
+                      <div className="w-3 h-3"></div>
+                    )}
+                  </div>
+                )}
+              </button>
+              
+              {/* Try-on list popup */}
+              {showTryOnList && <TryOnList onClose={closeTryOnList} />}
+            </div>
           </div>
         </div>
 
