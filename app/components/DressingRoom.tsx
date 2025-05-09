@@ -328,6 +328,7 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
     }
   };
 
+  const SHOW_MESSAGE_DURATION = 6000;
   // Go to dressing room with animation - updated to include image upload
   const goToDressingRoom = () => {
     // If curtains are already closed (for existing try-on), just add the item and close
@@ -347,7 +348,7 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
         
         // Go back to main page after showing the message
         window.history.back();
-      }, 3000);
+      }, SHOW_MESSAGE_DURATION);
       return;
     }
     
@@ -379,7 +380,7 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
           
           // Go back to main page after showing the message
           window.history.back();
-        }, 3000);
+        }, SHOW_MESSAGE_DURATION);
       }, 1000);
     }, 500);
   };
@@ -499,7 +500,7 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
                         We're processing your try-on request for {product.name}.
                       </p>
                       <p className="text-gray-600 text-sm mt-3">
-                        Check the garment icon to see your items when they're ready. Dressing normally takes <span className="font-bold text-[#a1a561]">up to 3 minutes</span> to complete.
+                        Check the garment icon to see your items when they're ready. Dressing normally takes <span className="font-bold text-[#5820e4]">up to 3 minutes</span> to complete.
                       </p>
                     </div>
                   </div>
