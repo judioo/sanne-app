@@ -56,9 +56,7 @@ export default function CollectionLayout({
           const pendingItems = filteredItems.filter((item: any) => item.status !== TOI_STATUS.COMPLETED);
           setHasPendingTryOn(pendingItems.length > 0);
           setPendingTryOnCount(pendingItems.length);
-          
-          // Set color based on pending items
-          setGarmentColor(pendingItems.length > 0 ? '#5820e4' : '#a1a561');
+          setGarmentColor('#a1a561');
         } catch (e) {
           console.error('Error checking try-on items:', e);
         }
