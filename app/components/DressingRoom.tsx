@@ -30,6 +30,7 @@ type TryOnItem = {
 export default function DressingRoom({ product, onClose, startWithClosedCurtains = false }: DressingRoomProps) {
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [showCurtains, setShowCurtains] = useState(startWithClosedCurtains);
   const [curtainsClosed, setCurtainsClosed] = useState(startWithClosedCurtains);
   const [showMessage, setShowMessage] = useState(false);
@@ -272,10 +273,13 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
       
       // Update localStorage with the result
       updateTryOnItemWithResults(result, variables.imgMD5);
+      // We don't reset isProcessing here because we want the button to remain disabled
+      // until the user is redirected away from this screen
     },
     onError: (error) => {
       console.error('Error uploading image to dressing room:', error);
       setUploadError('Failed to process image. Please try again.');
+      setIsProcessing(false);
     }
   });
   
@@ -354,6 +358,7 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
   
   // Process image upload - use uploaded image or default
   const processImageUpload = async () => {
+    // Note: isProcessing is now set in goToDressingRoom before this function is called
     if (uploadedImage) {
       uploadImageToServer(uploadedImage);
     } else {
@@ -362,6 +367,7 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
         uploadImageToServer(defaultImage);
       } catch (error) {
         console.error('Error processing default image:', error);
+        setIsProcessing(false);
       }
     }
   };
@@ -369,6 +375,9 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
   const SHOW_MESSAGE_DURATION = 6000;
   // Go to dressing room with animation - updated to include image upload
   const goToDressingRoom = () => {
+    // Set processing state immediately to prevent multiple clicks
+    setIsProcessing(true);
+    
     // If curtains are already closed (for existing try-on), just add the item and close
     if (startWithClosedCurtains) {
       // Add try-on item to localStorage
@@ -606,9 +615,9 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
         {/* Dressing room button - Make sure it's not obscured */}
         <div className="mb-10">
           <button 
-            onClick={hasTryOnItems ? undefined : goToDressingRoom}
-            disabled={hasTryOnItems}
-            className={`w-full py-4 ${hasTryOnItems ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#a1a561] cursor-pointer'} text-white rounded-md font-medium relative overflow-hidden group`}
+            onClick={hasTryOnItems || isProcessing ? undefined : goToDressingRoom}
+            disabled={hasTryOnItems || isProcessing}
+            className={`w-full py-4 ${hasTryOnItems || isProcessing ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#a1a561] cursor-pointer'} text-white rounded-md font-medium relative overflow-hidden group`}
           >
             <span className="relative z-10">To The Dressing Room</span>
             <div className="absolute inset-0 bg-gradient-to-r from-[#b1b571] to-[#91954f] 
