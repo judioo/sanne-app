@@ -28,14 +28,15 @@ export const processImageFunction = inngest.createFunction(
       console.log(`Processing try-on for model image URL: ${imageUrl}`);
       
       // Update job status in Redis
+      toiCache.reset();
       const currentState = await toiCache.get(TOIJobId);
       await toiCache.set({
+        ...currentState,
         jobId: TOIJobId,
         status: TOI_STATUS.PROCESSING_STARTED,
         productId,
         md5sum: imgMD5,
-        timestamp: Date.now(),
-        ...currentState
+        timestamp: Date.now()
       });
       
       // Process the image with our utility
@@ -56,16 +57,17 @@ export const processImageFunction = inngest.createFunction(
         console.log(`Final TOI URL: ${result}`);
         
         // Update final success status in Redis
+        toiCache.reset();
         const currentState = await toiCache.get(TOIJobId);
         await toiCache.set({
+          ...currentState,
           jobId: TOIJobId,
           status: 'completed',
           result,
           processingDuration: (durationMs / 1000).toFixed(1),
           productId,
           md5sum: imgMD5,
-          timestamp: Date.now(),
-          ...currentState
+          timestamp: Date.now()
         });
         
         return {
@@ -80,13 +82,13 @@ export const processImageFunction = inngest.createFunction(
         // Update final error status in Redis
         const currentState = await toiCache.get(TOIJobId);
         await toiCache.set({
+          ...currentState,
           jobId: TOIJobId,
           status: 'failed',
           error: 'Processing failed with no result',
           productId,
           md5sum: imgMD5,
-          timestamp: Date.now(),
-          ...currentState
+          timestamp: Date.now()
         });
         
         return {
@@ -105,13 +107,13 @@ export const processImageFunction = inngest.createFunction(
       // Update final error status in Redis
       const currentState = await toiCache.get(TOIJobId);
       await toiCache.set({
+        ...currentState,
         jobId: TOIJobId,
         status: 'error',
         error: error instanceof Error ? error.message : 'Unknown error',
         productId,
         md5sum: imgMD5,
-        timestamp: Date.now(),
-        ...currentState
+        timestamp: Date.now()
       });
       
       return {

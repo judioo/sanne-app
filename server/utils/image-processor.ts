@@ -61,14 +61,15 @@ export async function processImageWithAI(
     console.log(`Processing product ID ${productId} with MD5 ${md5sum}, TOIID: ${TOIJobId}`);
     
     // Initialize job status
+    toiCache.reset();
     const currentState = await toiCache.get(TOIJobId);
     await toiCache.set({ 
+      ...currentState,
       jobId: TOIJobId, 
       status: TOI_STATUS.PROCESSING_STARTED, 
       productId, 
       md5sum,
-      timestamp: Date.now(),
-      ...currentState 
+      timestamp: Date.now()
     });
     
     // Find product
@@ -281,9 +282,11 @@ export async function processImageWithAI(
       console.log('Uploading generated image to UploadThing...');
       const uploadResult = await utapi.uploadFiles(webpFile);
       
+      // check if we have data. Error if we don't
       if (!uploadResult.data) {
         console.error('UploadThing returned no data');
         
+        // update state object - we have no data from openAI
         await toiCache.set({ 
           jobId: TOIJobId, 
           status: TOI_STATUS.ERROR, 

@@ -111,6 +111,7 @@ export const productsRouter = router({
       console.log(`Processing dressing room request for product ${input.productId} TOIID: ${TOIID}`);
       
       // Initialize job status in Redis
+      toiCache.reset();
       await toiCache.set({ 
         jobId: TOIID, 
         status: 'initialized', 

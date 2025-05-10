@@ -35,6 +35,9 @@ export const QueryCache = <T>() => {
       },
       delete: async (jobId: string) => {
         return await toiJobs.del(jobId);
-      }
+      },
+      reset: () => {
+        statePayload = {};
+      },
     };
   };
