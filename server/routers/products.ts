@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { router, publicProcedure } from '../trpc';
 import { products, getAllCollections } from '../product-data';
 import { UTApi } from 'uploadthing/server';
-import { processImageWithAI } from '../utils/image-processor';
+import { processImageWithAI, base64ToUint8Array, resizeAndConvertToWebp } from '../utils/image-processor';
 import { QueryCache, toiPayload } from '../utils/redis';
 import { inngest } from '../utils/inngest';
 import { TOIToDressingRoomStatusMapper } from '../utils/toi-constants';
@@ -123,15 +123,24 @@ export const productsRouter = router({
         // Upload the raw image to UploadThing first
         console.log(`Uploading source image to UploadThing for TOIID: ${TOIID}`);
         
-        const imageBuffer = Buffer.from(input.image.split(',')[1], 'base64');
-        const fileName = `${e}-${input.imgMD5}-${input.productId}.jpg`;
         
-        // Create a blob and then a file
-        const blob = new Blob([imageBuffer], { type: 'image/jpeg' });
-        const file = new File([blob], fileName, { type: 'image/jpeg' });
-        
+       
+        console.log(`Converting raw image to WebP...`);
+        // Extract the base64 part from the data URL, just like we did for imageBuffer
+        const base64Data = input.image.split(',')[1];
+        const bytes = base64ToUint8Array(base64Data);
+        const toiWebpFileName = `${e}-${input.imgMD5}-${input.productId}.webp`;
+        const webpBuffer = await resizeAndConvertToWebp(Buffer.from(bytes));
+        const webpBlob = new Blob([webpBuffer], { type: 'image/webp' });
+        const webpFile = new File([webpBlob], toiWebpFileName, { type: 'image/webp' });
+        const reductionPercentage = ((base64Data.length - webpBuffer.length) / base64Data.length) * 100;
+        const resizeMessage = `Original buffer size: ${base64Data.length} bytes, Resized buffer size: ${webpBuffer.length} bytes, Reduction: ${reductionPercentage.toFixed(2)}%`;
+        // log the size of the resized buffer
+        console.log(resizeMessage);
+
+
         // Upload to UploadThing - API requires array for multi-file uploads
-        const uploadResult = await utapi.uploadFiles(file);
+        const uploadResult = await utapi.uploadFiles(webpFile);
         
         if (!uploadResult.data) {
           throw new Error('Failed to upload image to UploadThing');
@@ -145,6 +154,9 @@ export const productsRouter = router({
           jobId: TOIID, 
           status: 'source-uploaded', 
           sourceImageUrl: imageUrl,
+          resize: {
+            model: resizeMessage,
+          },
           timestamp: Date.now() 
         });
         

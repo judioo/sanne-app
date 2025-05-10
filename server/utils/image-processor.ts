@@ -1,4 +1,4 @@
-import { UTApi, UTFile } from 'uploadthing/server';
+import { UTApi } from 'uploadthing/server';
 import OpenAI, { toFile } from 'openai';
 import { products } from '../product-data';
 import https from 'https';
@@ -61,12 +61,14 @@ export async function processImageWithAI(
     console.log(`Processing product ID ${productId} with MD5 ${md5sum}, TOIID: ${TOIJobId}`);
     
     // Initialize job status
+    const currentState = await toiCache.get(TOIJobId);
     await toiCache.set({ 
       jobId: TOIJobId, 
       status: TOI_STATUS.PROCESSING_STARTED, 
       productId, 
       md5sum,
-      timestamp: Date.now() 
+      timestamp: Date.now(),
+      ...currentState 
     });
     
     // Find product
@@ -173,8 +175,8 @@ export async function processImageWithAI(
         prompt: prompt,
         model: "gpt-image-1",
         n: 1,
-        size: "1024x1024",
-        quality: "high",
+        size: "1024x1536", //"1024x1024",
+        quality: "medium",
         background: "auto"
       });
       
@@ -219,37 +221,81 @@ export async function processImageWithAI(
       // Convert base64 to buffer
       console.log('OpenAI returned base64 image data, converting to buffer...');
       const imageBuffer = Buffer.from(base64Data, 'base64');
+
+      let costMeta: {
+        token?: string,
+        cost?: string,
+        error?: string
+      } | undefined = undefined;
+
+      // calculate cost of OpenAI API call
+      if (response.usage) {
+        const { input_tokens, output_tokens, input_tokens_details } =
+          response.usage;
+        const textTokens = input_tokens_details?.text_tokens ?? 0;
+        const imageTokens = input_tokens_details?.image_tokens ?? 0;
+        const textCost = textTokens * 0.000005;
+        const imageCost = imageTokens * 0.00001;
+        const outputCost = output_tokens * 0.00004;
+        const totalCost = textCost + imageCost + outputCost;
+
+        costMeta = {
+          token:`input_tokens=${input_tokens} (text=${textTokens}, image=${imageTokens}), output_tokens=${output_tokens}`,
+          cost: `Cost: text_input=$${textCost.toFixed(6)}, image_input=$${imageCost.toFixed(6)}, output=$${outputCost.toFixed(6)}, total=$${totalCost.toFixed(6)}`,
+        };
+      } else {
+        costMeta = {
+          error: "No usage info returned from OpenAI response; cannot log token usage or cost."
+        };
+      }
+
+      console.log(`costMeta: ${JSON.stringify(costMeta,null,2)}`);
       
       // Update status before uploading result
       await toiCache.set({ 
         jobId: TOIJobId, 
         status: TOI_STATUS.RECEIVED_OPENAI_IMAGE, 
         productId, 
+        costMeta,
         md5sum,
         timestamp: Date.now() 
       });
       
-      // Upload to UploadThing
-      console.log('Uploading generated image to UploadThing...');
-      const fileName = `toi-${TOIJobId}.jpg`;
-      const blob = new Blob([imageBuffer], { type: 'image/jpeg' });
-      const uploadFile = new File([blob], fileName, { type: 'image/jpeg' });
+      console.log(`Converting OpenAI response to WebP...`);
+      const bytes = base64ToUint8Array(base64Data);
+      const toiWebpFileName = `toi-${TOIJobId}.webp`;
+      const webpBuffer = await resizeAndConvertToWebp(Buffer.from(bytes));
+      const webpBlob = new Blob([webpBuffer], { type: 'image/webp' });
+      const webpFile = new File([webpBlob], toiWebpFileName, { type: 'image/webp' });
+      // calculate the reduction in size as a percentaage and add to the resizeMessage  
+      const reductionPercentage = ((imageBuffer.length - webpBuffer.length) / imageBuffer.length) * 100;
+      const resizeMessage = `Original buffer size: ${imageBuffer.length} bytes, Resized buffer size: ${webpBuffer.length} bytes, Reduction: ${reductionPercentage.toFixed(2)}%`;
+      // log the size of the resized buffer
+      console.log(resizeMessage);
+      const currentState = await toiCache.get(TOIJobId);
+      const resize = currentState?.resize || {};
+      resize.toi = resizeMessage;
+      
       
       // Upload to UploadThing
-      const uploadResult = await utapi.uploadFiles(uploadFile);
+      console.log('Uploading generated image to UploadThing...');
+      const uploadResult = await utapi.uploadFiles(webpFile);
       
       if (!uploadResult.data) {
         console.error('UploadThing returned no data');
+        
         await toiCache.set({ 
           jobId: TOIJobId, 
           status: TOI_STATUS.ERROR, 
           error: 'Upload failed - no data returned', 
           productId, 
+          costMeta,
           md5sum,
-          timestamp: Date.now() 
+          timestamp: Date.now(),
         });
         return null;
       }
+      
       
       // Get URL from result
       const finalImageUrl = uploadResult.data.ufsUrl;
@@ -261,6 +307,8 @@ export async function processImageWithAI(
         status: TOI_STATUS.COMPLETED, 
         url: finalImageUrl, 
         productId, 
+        costMeta,
+        resize,
         md5sum,
         timestamp: Date.now() 
       });
@@ -293,3 +341,18 @@ export async function processImageWithAI(
     return null;
   }
 }
+
+export function base64ToUint8Array(base64: string): Uint8Array {
+  const binaryString = globalThis.atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) bytes[i] = binaryString.charCodeAt(i);
+  return bytes;
+};
+
+export async function resizeAndConvertToWebp(inputBuffer: Buffer): Promise<Buffer> {
+  return sharp(inputBuffer)
+    .resize(2048, 2048, { fit: "inside", withoutEnlargement: true })
+    .webp({ quality: 92 })
+    .toBuffer();
+};

@@ -28,12 +28,14 @@ export const processImageFunction = inngest.createFunction(
       console.log(`Processing try-on for model image URL: ${imageUrl}`);
       
       // Update job status in Redis
+      const currentState = await toiCache.get(TOIJobId);
       await toiCache.set({
         jobId: TOIJobId,
         status: TOI_STATUS.PROCESSING_STARTED,
         productId,
         md5sum: imgMD5,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        ...currentState
       });
       
       // Process the image with our utility
@@ -54,6 +56,7 @@ export const processImageFunction = inngest.createFunction(
         console.log(`Final TOI URL: ${result}`);
         
         // Update final success status in Redis
+        const currentState = await toiCache.get(TOIJobId);
         await toiCache.set({
           jobId: TOIJobId,
           status: 'completed',
@@ -61,7 +64,8 @@ export const processImageFunction = inngest.createFunction(
           processingDuration: (durationMs / 1000).toFixed(1),
           productId,
           md5sum: imgMD5,
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          ...currentState
         });
         
         return {
@@ -74,13 +78,15 @@ export const processImageFunction = inngest.createFunction(
         console.error(`[${processingEndTime}] Inngest: Background processing failed for product ${productId} after ${(durationMs / 1000).toFixed(1)} seconds`);
         
         // Update final error status in Redis
+        const currentState = await toiCache.get(TOIJobId);
         await toiCache.set({
           jobId: TOIJobId,
           status: 'failed',
           error: 'Processing failed with no result',
           productId,
           md5sum: imgMD5,
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          ...currentState
         });
         
         return {
@@ -97,13 +103,15 @@ export const processImageFunction = inngest.createFunction(
       console.error(`[${processingEndTime}] Inngest: Error in background processing for product ${productId} after ${(durationMs / 1000).toFixed(1)} seconds:`, error);
       
       // Update final error status in Redis
+      const currentState = await toiCache.get(TOIJobId);
       await toiCache.set({
         jobId: TOIJobId,
         status: 'error',
         error: error instanceof Error ? error.message : 'Unknown error',
         productId,
         md5sum: imgMD5,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        ...currentState
       });
       
       return {
