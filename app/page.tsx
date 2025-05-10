@@ -150,6 +150,8 @@ function HomeContent() {
         (sortBy !== cachedSortBy) || 
         (searchTerm !== cachedSearchTerm)) {
       setCurrentPage(1);
+      // Also reset the cached page to ensure we start fresh
+      cachedPage = 1;
       // Don't clear products here, wait for the new data
     }
   }, [category, sortBy, searchTerm]);
@@ -160,7 +162,15 @@ function HomeContent() {
     if (category !== 'all') params.set('category', category);
     if (sortBy) params.set('sortBy', sortBy);
     if (searchTerm) params.set('search', searchTerm);
-    if (currentPage > 1) params.set('page', currentPage.toString());
+    
+    // Only include page parameter if we're not changing filters
+    // This ensures each tab has its own pagination context
+    if (currentPage > 1 && 
+        category === cachedCategory && 
+        sortBy === cachedSortBy && 
+        searchTerm === cachedSearchTerm) {
+      params.set('page', currentPage.toString());
+    }
     
     const url = params.toString() ? `/?${params.toString()}` : '/';
     window.history.replaceState({}, '', url);
@@ -496,7 +506,12 @@ function HomeContent() {
             className={`flex-1 py-2 px-4 ${
               category === 'all' ? 'border-b-2 border-black' : ''
             }`}
-            onClick={() => setCategory('all')}
+            onClick={() => {
+              // Reset pagination when changing category
+              setCategory('all');
+              setCurrentPage(1);
+              cachedPage = 1;
+            }}
           >
             All
           </button>
@@ -504,7 +519,12 @@ function HomeContent() {
             className={`flex-1 py-2 px-4 ${
               category === 'women' ? 'border-b-2 border-black' : ''
             }`}
-            onClick={() => setCategory('women')}
+            onClick={() => {
+              // Reset pagination when changing category
+              setCategory('women');
+              setCurrentPage(1);
+              cachedPage = 1;
+            }}
           >
             Women
           </button>
@@ -512,7 +532,12 @@ function HomeContent() {
             className={`flex-1 py-2 px-4 ${
               category === 'men' ? 'border-b-2 border-black' : ''
             }`}
-            onClick={() => setCategory('men')}
+            onClick={() => {
+              // Reset pagination when changing category
+              setCategory('men');
+              setCurrentPage(1);
+              cachedPage = 1;
+            }}
           >
             Men
           </button>
