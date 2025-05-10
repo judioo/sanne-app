@@ -123,9 +123,6 @@ export const productsRouter = router({
       try {
         // Upload the raw image to UploadThing first
         console.log(`Uploading source image to UploadThing for TOIID: ${TOIID}`);
-        
-        
-       
         console.log(`Converting raw image to WebP...`);
         // Extract the base64 part from the data URL, just like we did for imageBuffer
         const base64Data = input.image.split(',')[1];
@@ -211,6 +208,7 @@ export const productsRouter = router({
       const statusMap: Record<string, any> = {};
       
       results.forEach(item => {
+        // @ts-ignore
         let { status, ...rest } = item?.result || {};
         status = status || 'Gone';
         const dressStatus = TOIToDressingRoomStatusMapper[status] || 'Gone';

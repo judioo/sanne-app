@@ -235,9 +235,9 @@ export async function processImageWithAI(
           response.usage;
         const textTokens = input_tokens_details?.text_tokens ?? 0;
         const imageTokens = input_tokens_details?.image_tokens ?? 0;
-        const textCost = textTokens * 0.000005;
-        const imageCost = imageTokens * 0.00001;
-        const outputCost = output_tokens * 0.00004;
+        const textCost = textTokens * 0.000005; // 5.00 per 1M tokens
+        const imageCost = imageTokens * 0.00001; // 10.00 per 1M tokens
+        const outputCost = output_tokens * 0.00004; // 40.00 per 1M tokens
         const totalCost = textCost + imageCost + outputCost;
 
         costMeta = {
@@ -249,8 +249,6 @@ export async function processImageWithAI(
           error: "No usage info returned from OpenAI response; cannot log token usage or cost."
         };
       }
-
-      console.log(`costMeta: ${JSON.stringify(costMeta,null,2)}`);
       
       // Update status before uploading result
       await toiCache.set({ 
