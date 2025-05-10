@@ -238,11 +238,12 @@ export async function processImageWithAI(
         const textCost = textTokens * 0.000005; // 5.00 per 1M tokens
         const imageCost = imageTokens * 0.00001; // 10.00 per 1M tokens
         const outputCost = output_tokens * 0.00004; // 40.00 per 1M tokens
-        const totalCost = textCost + imageCost + outputCost;
+        const imageGenerationCost = 1 * 0.063; // 63.00 per image
+        const totalCost = textCost + imageCost + outputCost + imageGenerationCost;
 
         costMeta = {
-          token:`input_tokens=${input_tokens} (text=${textTokens}, image=${imageTokens}), output_tokens=${output_tokens}`,
-          cost: `Cost: text_input=$${textCost.toFixed(6)}, image_input=$${imageCost.toFixed(6)}, output=$${outputCost.toFixed(6)}, total=$${totalCost.toFixed(6)}`,
+          token:`input_tokens=${input_tokens} (text=${textTokens}, image=${imageTokens}), output_tokens=${output_tokens}, image_generation=1`,
+          cost: `Cost: text_input=$${textCost.toFixed(6)}, image_input=$${imageCost.toFixed(6)}, output=$${outputCost.toFixed(6)}, image_generation=$${imageGenerationCost.toFixed(6)}, total=$${totalCost.toFixed(6)}`,
         };
       } else {
         costMeta = {
