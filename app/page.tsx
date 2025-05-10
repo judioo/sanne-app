@@ -29,7 +29,22 @@ let cachedProducts: ProductType[] = [];
 let cachedCategory: 'all' | 'men' | 'women' = 'all';
 let cachedSortBy: 'price_asc' | 'price_desc' | undefined = undefined;
 let cachedSearchTerm: string = "";
-let cachedPage: number = 1;
+
+// Separate page contexts for each category and filter combination
+type PageContextKey = string;
+let cachedPageContexts: Record<PageContextKey, number> = {
+  'all': 1,
+  'men': 1,
+  'women': 1
+};
+
+// Helper function to get context key based on filters
+function getContextKey(category: 'all' | 'men' | 'women', sortBy?: 'price_asc' | 'price_desc', search?: string): PageContextKey {
+  let key = category;
+  if (sortBy) key += `-${sortBy}`;
+  if (search) key += `-${search}`;
+  return key;
+}
 
 // Main component that doesn't use useSearchParams directly
 export default function Home() {
@@ -61,7 +76,8 @@ function HomeContent() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [currentPage, setCurrentPage] = useState(cachedPage);
+  const contextKey = useMemo(() => getContextKey(category, sortBy, searchTerm), [category, sortBy, searchTerm]);
+  const [currentPage, setCurrentPage] = useState(cachedPageContexts[contextKey] || 1);
   const [allProducts, setAllProducts] = useState<ProductType[]>(cachedProducts);
   const [hasMore, setHasMore] = useState(true);
   const [hasPendingTryOn, setHasPendingTryOn] = useState(false);
@@ -93,7 +109,7 @@ function HomeContent() {
              category !== cachedCategory || 
              sortBy !== cachedSortBy || 
              searchTerm !== cachedSearchTerm ||
-             currentPage > cachedPage
+             currentPage > (cachedPageContexts[contextKey] || 1)
   });
   
   // Optimized handling of product data changes with better performance
@@ -115,8 +131,8 @@ function HomeContent() {
         setAllProducts(prev => [...prev, ...productData.products]);
         setHasMore(productData.pagination.hasMore);
         
-        // Only update the cached page
-        cachedPage = currentPage;
+        // Only update the cached page context for this specific filter combination
+        cachedPageContexts[contextKey] = currentPage;
       } 
       // Filter change path - reset and replace all products
       else if (currentPage === 1 || 
@@ -133,7 +149,7 @@ function HomeContent() {
         cachedCategory = category;
         cachedSortBy = sortBy;
         cachedSearchTerm = searchTerm;
-        cachedPage = currentPage;
+        cachedPageContexts[contextKey] = currentPage;
       }
       
       // Always mark initial load as complete
@@ -149,12 +165,16 @@ function HomeContent() {
     if ((category !== cachedCategory) || 
         (sortBy !== cachedSortBy) || 
         (searchTerm !== cachedSearchTerm)) {
-      setCurrentPage(1);
-      // Also reset the cached page to ensure we start fresh
-      cachedPage = 1;
+      // Get the page for the new context (or default to 1)
+      const newContextKey = getContextKey(category, sortBy, searchTerm);
+      const newPage = cachedPageContexts[newContextKey] || 1;
+      
+      // Set the current page to the cached value for this context
+      setCurrentPage(newPage);
+      
       // Don't clear products here, wait for the new data
     }
-  }, [category, sortBy, searchTerm]);
+  }, [category, sortBy, searchTerm, contextKey]);
 
   // Update URL with filters for better back button behavior
   useEffect(() => {
@@ -163,12 +183,9 @@ function HomeContent() {
     if (sortBy) params.set('sortBy', sortBy);
     if (searchTerm) params.set('search', searchTerm);
     
-    // Only include page parameter if we're not changing filters
-    // This ensures each tab has its own pagination context
-    if (currentPage > 1 && 
-        category === cachedCategory && 
-        sortBy === cachedSortBy && 
-        searchTerm === cachedSearchTerm) {
+    // Always include page parameter if greater than 1
+    // Each context now has its own page state
+    if (currentPage > 1) {
       params.set('page', currentPage.toString());
     }
     
@@ -202,7 +219,14 @@ function HomeContent() {
       if (pageParam && !isNaN(Number(pageParam))) {
         const page = Number(pageParam);
         setCurrentPage(page);
-        cachedPage = page;
+        
+        // Store the page in the appropriate context
+        const initialContextKey = getContextKey(
+          categoryParam || 'all',
+          sortByParam || undefined,
+          searchParam || ''
+        );
+        cachedPageContexts[initialContextKey] = page;
       }
     }
   }, [searchParams]);
@@ -507,10 +531,8 @@ function HomeContent() {
               category === 'all' ? 'border-b-2 border-black' : ''
             }`}
             onClick={() => {
-              // Reset pagination when changing category
+              // Switch to 'all' category - will use its own page context
               setCategory('all');
-              setCurrentPage(1);
-              cachedPage = 1;
             }}
           >
             All
@@ -520,10 +542,8 @@ function HomeContent() {
               category === 'women' ? 'border-b-2 border-black' : ''
             }`}
             onClick={() => {
-              // Reset pagination when changing category
+              // Switch to 'women' category - will use its own page context
               setCategory('women');
-              setCurrentPage(1);
-              cachedPage = 1;
             }}
           >
             Women
@@ -533,10 +553,8 @@ function HomeContent() {
               category === 'men' ? 'border-b-2 border-black' : ''
             }`}
             onClick={() => {
-              // Reset pagination when changing category
+              // Switch to 'men' category - will use its own page context
               setCategory('men');
-              setCurrentPage(1);
-              cachedPage = 1;
             }}
           >
             Men
