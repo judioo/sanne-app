@@ -9,7 +9,10 @@ import { type AppRouter } from "../server/routers/index";
 import { useRouter, useSearchParams } from "next/navigation";
 import GarmentIcon from "./components/GarmentIcon";
 import TryOnList from "./components/TryOnList";
-import logger from "../utils/logger";
+import { logger, setLogLevel } from "../utils/logger";
+
+setLogLevel('info');
+
 
 // Define type for product data from tRPC
 type RouterOutput = inferRouterOutputs<AppRouter>;
@@ -138,7 +141,7 @@ function HomeContent() {
       limit: 12,
       _uniqueId: uniqueQueryId, // Add a unique ID for different query hashes
     };
-    logger.info(`[queryInput] query: ${JSON.stringify(query, null, 2)}`);
+    logger.debug(`[queryInput] query: ${JSON.stringify(query, null, 2)}`);
     return query;
   }, [category, sortBy, searchTerm, currentContextRef.current.value]);
   
@@ -266,7 +269,7 @@ function HomeContent() {
   
   // Reset pagination when filters change - separated from data processing for better performance
   useEffect(() => {
-    logger.info(`category: ${category}, cachedCategory: ${cachedCategory}, currentPage: ${currentPage.value}, cachedPageContexts: ${JSON.stringify(cachedPageContexts, null, 2)}`);
+    logger.debug(`category: ${category}, cachedCategory: ${cachedCategory}, currentPage: ${currentPage.value}, cachedPageContexts: ${JSON.stringify(cachedPageContexts, null, 2)}`);
     // When category changes, always reset to page 1 or use cached value
     if (category !== cachedCategory) {
       const newContextKey = getContextKey('category', category, sortBy, searchTerm);
@@ -975,7 +978,7 @@ function HomeContent() {
             {allProducts.map((product, index) => {
               // If this is the last product and there's more to load, attach the ref
               const isLastProduct = index === allProducts.length - 1 && hasMore;
-              logger.info(`[product] ${product.name} - ${index} of ${allProducts.length}: isLastProduct: ${isLastProduct}, hasMore: ${hasMore}, category: ${currentContextRef.current.name}, value: ${currentContextRef.current.value}`);
+              logger.debug(`[product] ${product.name} - ${index} of ${allProducts.length}: isLastProduct: ${isLastProduct}, hasMore: ${hasMore}, category: ${currentContextRef.current.name}, value: ${currentContextRef.current.value}`);
               
               return (
                 <div key={`${product.id}-${index}`} ref={isLastProduct ? lastProductElementRef : null}>
