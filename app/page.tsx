@@ -30,19 +30,33 @@ let cachedCategory: 'all' | 'men' | 'women' = 'all';
 let cachedSortBy: 'price_asc' | 'price_desc' | undefined = undefined;
 let cachedSearchTerm: string = "";
 
-// Separate page contexts for each category and filter combination
-type PageContextKey = string;
-let cachedPageContexts: Record<PageContextKey, number> = {
-  'all': 1,
-  'men': 1,
-  'women': 1
+// Define page context type with name, value, and type properties
+type PageContext = {
+  name: string; // 'all', 'men', 'women', or collection name
+  value: number; // page number
+  type: 'category' | 'collection'; // context type
+};
+
+// Default page context
+let cachedPageContext: PageContext = {
+  name: 'all',
+  value: 1,
+  type: 'category'
+};
+
+// Store separate page contexts for different views
+let cachedPageContexts: Record<string, PageContext> = {
+  'category-all': { name: 'all', value: 1, type: 'category' },
+  'category-men': { name: 'men', value: 1, type: 'category' },
+  'category-women': { name: 'women', value: 1, type: 'category' }
 };
 
 // Helper function to get context key based on filters
-function getContextKey(category: 'all' | 'men' | 'women', sortBy?: 'price_asc' | 'price_desc', search?: string): PageContextKey {
-  let key = category;
+function getContextKey(contextType: 'category' | 'collection', name: string, sortBy?: 'price_asc' | 'price_desc', search?: string): string {
+  let key = `${contextType}-${name}`;
   if (sortBy) key += `-${sortBy}`;
   if (search) key += `-${search}`;
+  console.log(`getContextKey: ${key}`);
   return key;
 }
 
@@ -76,8 +90,8 @@ function HomeContent() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const contextKey = useMemo(() => getContextKey(category, sortBy, searchTerm), [category, sortBy, searchTerm]);
-  const [currentPage, setCurrentPage] = useState(cachedPageContexts[contextKey] || 1);
+  const contextKey = useMemo(() => getContextKey('category', category, sortBy, searchTerm), [category, sortBy, searchTerm]);
+  const [currentPage, setCurrentPage] = useState<PageContext>(cachedPageContexts[contextKey] || { name: category, value: 1, type: 'category' as const });
   const [allProducts, setAllProducts] = useState<ProductType[]>(cachedProducts);
   const [hasMore, setHasMore] = useState(true);
   const [hasPendingTryOn, setHasPendingTryOn] = useState(false);
@@ -94,10 +108,10 @@ function HomeContent() {
     category,
     sortBy,
     search: searchTerm,
-    collection: "New Arrivals",
-    page: currentPage,
+    collection: "New Arrivals", 
+    page: currentPage.value,
     limit: 12,
-  }), [category, sortBy, searchTerm, currentPage]);
+  }), [category, sortBy, searchTerm, currentPage.value]);
   
   // Fetch all collections for the side menu - with caching
   const { data: collections = [] } = trpc.products.getCollections.useQuery();
@@ -105,11 +119,28 @@ function HomeContent() {
   // Fetch products using tRPC with pagination - optimized with conditions
   const { data: productData, isLoading, isFetching } = trpc.products.getAll.useQuery(queryInput, {
     // Only run the query if we need to fetch data (initial load or filter change)
-    enabled: isInitialLoad.current || 
+    enabled: (() => {
+      console.log(`[useQuery] currentPage: ${JSON.stringify(currentPage, null, 2)}`);
+    console.log(`[useQuery] cachedPageContexts: ${JSON.stringify(cachedPageContexts, null, 2)}`);
+    console.log(`[useQuery] contextKey: ${contextKey}`);
+    console.log(`[useQuery] isInitialLoad: ${isInitialLoad.current}`);
+    console.log(`[useQuery] category: ${category}`);
+    console.log(`[useQuery] cachedCategory: ${cachedCategory}`);
+    console.log(`[useQuery] sortBy: ${sortBy}`);
+    console.log(`[useQuery] cachedSortBy: ${cachedSortBy}`);
+    console.log(`[useQuery] searchTerm: ${searchTerm}`);
+    console.log(`[useQuery] cachedSearchTerm: ${cachedSearchTerm}`);
+    console.log(`[useQuery] currentPage.value: ${currentPage.value}`);
+    console.log(`[useQuery] cachedPageContexts[contextKey].value: ${cachedPageContexts[contextKey]?.value}`);
+    console.log(`logic: ${isInitialLoad.current || category !== cachedCategory || sortBy !== cachedSortBy || searchTerm !== cachedSearchTerm || (cachedPageContexts[contextKey] ? currentPage.value > cachedPageContexts[contextKey].value : true)}`)
+    return false;
+    })() ||
+    
+    isInitialLoad.current || 
              category !== cachedCategory || 
              sortBy !== cachedSortBy || 
              searchTerm !== cachedSearchTerm ||
-             currentPage > (cachedPageContexts[contextKey] || 1)
+             (cachedPageContexts[contextKey] ? currentPage.value > cachedPageContexts[contextKey].value : true)
   });
   
   // Optimized handling of product data changes with better performance
@@ -122,7 +153,7 @@ function HomeContent() {
       isProcessingData.current = true;
       
       // Fast path optimization - if this is a subsequent page with no filter changes
-      if (currentPage > 1 && 
+      if (currentPage.value > 1 && 
           category === cachedCategory && 
           sortBy === cachedSortBy && 
           searchTerm === cachedSearchTerm) {
@@ -132,10 +163,11 @@ function HomeContent() {
         setHasMore(productData.pagination.hasMore);
         
         // Only update the cached page context for this specific filter combination
-        cachedPageContexts[contextKey] = currentPage;
+        cachedPageContexts[contextKey] = {...currentPage};
+        cachedPageContext = {...currentPage};
       } 
       // Filter change path - reset and replace all products
-      else if (currentPage === 1 || 
+      else if (currentPage.value === 1 || 
                category !== cachedCategory || 
                sortBy !== cachedSortBy || 
                searchTerm !== cachedSearchTerm) {
@@ -149,7 +181,8 @@ function HomeContent() {
         cachedCategory = category;
         cachedSortBy = sortBy;
         cachedSearchTerm = searchTerm;
-        cachedPageContexts[contextKey] = currentPage;
+        cachedPageContexts[contextKey] = {...currentPage};
+        cachedPageContext = {...currentPage};
       }
       
       // Always mark initial load as complete
@@ -162,19 +195,21 @@ function HomeContent() {
   
   // Reset pagination when filters change - separated from data processing for better performance
   useEffect(() => {
-    if ((category !== cachedCategory) || 
-        (sortBy !== cachedSortBy) || 
-        (searchTerm !== cachedSearchTerm)) {
-      // Get the page for the new context (or default to 1)
-      const newContextKey = getContextKey(category, sortBy, searchTerm);
-      const newPage = cachedPageContexts[newContextKey] || 1;
-      
-      // Set the current page to the cached value for this context
-      setCurrentPage(newPage);
-      
-      // Don't clear products here, wait for the new data
+    console.log(`category: ${category}, cachedCategory: ${cachedCategory}, currentPage: ${currentPage.value}, cachedPageContexts: ${JSON.stringify(cachedPageContexts, null, 2)}`);
+    // When category changes, always reset to page 1 or use cached value
+    if (category !== cachedCategory) {
+      const newContextKey = getContextKey('category', category, sortBy, searchTerm);
+      const newPageContext = cachedPageContexts[newContextKey] || { name: category, value: 1, type: 'category' };
+      setCurrentPage(newPageContext);
+    } else if (sortBy !== cachedSortBy || searchTerm !== cachedSearchTerm) {
+      // For other filter changes, use cached page if available or reset to 1
+      const newContextKey = getContextKey('category', category, sortBy, searchTerm);
+      const newPageContext = cachedPageContexts[newContextKey] || { name: category, value: 1, type: 'category' };
+      setCurrentPage(newPageContext);
     }
-  }, [category, sortBy, searchTerm, contextKey]);
+      
+    // Don't clear products here, wait for the new data
+  }, [category, sortBy, searchTerm]);  // Removed contextKey dependency to avoid circular updates
 
   // Update URL with filters for better back button behavior
   useEffect(() => {
@@ -185,13 +220,13 @@ function HomeContent() {
     
     // Always include page parameter if greater than 1
     // Each context now has its own page state
-    if (currentPage > 1) {
-      params.set('page', currentPage.toString());
+    if (currentPage.value > 1) {
+      params.set('page', currentPage.value.toString());
     }
     
     const url = params.toString() ? `/?${params.toString()}` : '/';
     window.history.replaceState({}, '', url);
-  }, [category, sortBy, searchTerm, currentPage]);
+  }, [category, sortBy, searchTerm, currentPage.value]);
 
   // Restore filters from URL on initial load
   useEffect(() => {
@@ -217,16 +252,25 @@ function HomeContent() {
       }
       
       if (pageParam && !isNaN(Number(pageParam))) {
-        const page = Number(pageParam);
-        setCurrentPage(page);
+        const pageValue = Number(pageParam);
+        const categoryName = categoryParam || 'all';
+        const newPageContext: PageContext = {
+          name: categoryName,
+          value: pageValue,
+          type: 'category'
+        };
         
-        // Store the page in the appropriate context
+        setCurrentPage(newPageContext);
+        
+        // Store the page context in the appropriate context key
         const initialContextKey = getContextKey(
-          categoryParam || 'all',
+          'category',
+          categoryName,
           sortByParam || undefined,
           searchParam || ''
         );
-        cachedPageContexts[initialContextKey] = page;
+        cachedPageContexts[initialContextKey] = newPageContext;
+        cachedPageContext = newPageContext;
       }
     }
   }, [searchParams]);
@@ -239,9 +283,20 @@ function HomeContent() {
       observerRef.current.disconnect();
     }
     
+    // Set up intersection observer for infinite scrolling
     observerRef.current = new IntersectionObserver(entries => {
       if (entries[0].isIntersecting && hasMore && !isProcessingData.current) {
-        setCurrentPage(prevPage => prevPage + 1);
+        console.log('Loading more products...');
+        console.log(`currentPage: ${JSON.stringify(currentPage, null, 2)}`);
+        console.log(`processingData: ${JSON.stringify(isProcessingData, null, 2)}`);
+        console.log(`hasMore: ${hasMore}`);
+        setCurrentPage(prevPage => {
+          console.log(`prevPage: ${JSON.stringify(prevPage, null, 2)}`);
+          return {
+            ...prevPage,
+            value: prevPage.value + 1
+          }
+        });
       }
     }, { 
       threshold: 0.2, // Lower threshold for earlier loading
@@ -398,6 +453,15 @@ function HomeContent() {
     }
   };
 
+  const showCacheContext = () => {
+    console.log(`currentPage: ${JSON.stringify(currentPage, null, 2)}`);
+    console.log(`cachedPageContext: ${JSON.stringify(cachedPageContext, null, 2)}`);
+    console.log(`cachedPageContexts: ${JSON.stringify(cachedPageContexts, null, 2)}`);
+  };
+
+  console.log(`[just before render]productData: `); 
+  console.log(JSON.stringify(productData));
+
   // Desktop view with QR code
   if (!isMobile) {
     return (
@@ -531,8 +595,24 @@ function HomeContent() {
               category === 'all' ? 'border-b-2 border-black' : ''
             }`}
             onClick={() => {
-              // Switch to 'all' category - will use its own page context
+              console.log('Switching to all category...');
+              console.log(`before: `); showCacheContext();
+              // Switch to 'all' category with fresh page context
               setCategory('all');
+              
+              // Create a new page context for 'all' category
+              const newPageContext: PageContext = {
+                name: 'all',
+                value: 1,
+                type: 'category'
+              };
+              
+              // Update state and cache
+              setCurrentPage(newPageContext);
+              const newContextKey = getContextKey('category', 'all', sortBy, searchTerm);
+              cachedPageContexts[newContextKey] = newPageContext;
+              cachedPageContext = newPageContext;
+              console.log(`after: `); showCacheContext();
             }}
           >
             All
@@ -542,8 +622,25 @@ function HomeContent() {
               category === 'women' ? 'border-b-2 border-black' : ''
             }`}
             onClick={() => {
-              // Switch to 'women' category - will use its own page context
+              console.log('Switching to women category...');
+              console.log(`before: `); showCacheContext();
+
+              // Switch to 'women' category with fresh page context
               setCategory('women');
+              
+              // Create a new page context for 'women' category
+              const newPageContext: PageContext = {
+                name: 'women',
+                value: 1,
+                type: 'category'
+              };
+              
+              // Update state and cache
+              setCurrentPage(newPageContext);
+              const newContextKey = getContextKey('category', 'women', sortBy, searchTerm);
+              cachedPageContexts[newContextKey] = newPageContext;
+              cachedPageContext = newPageContext;
+              console.log(`after: `); showCacheContext();
             }}
           >
             Women
@@ -553,8 +650,24 @@ function HomeContent() {
               category === 'men' ? 'border-b-2 border-black' : ''
             }`}
             onClick={() => {
-              // Switch to 'men' category - will use its own page context
+              console.log('Switching to men category...');
+              console.log(`before: `); showCacheContext();
+              // Switch to 'men' category with fresh page context
               setCategory('men');
+              
+              // Create a new page context for 'men' category
+              const newPageContext: PageContext = {
+                name: 'men',
+                value: 1,
+                type: 'category'
+              };
+              
+              // Update state and cache
+              setCurrentPage(newPageContext);
+              const newContextKey = getContextKey('category', 'men', sortBy, searchTerm);
+              cachedPageContexts[newContextKey] = newPageContext;
+              cachedPageContext = newPageContext;
+              console.log(`after: `); showCacheContext();
             }}
           >
             Men
