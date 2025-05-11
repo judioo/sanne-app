@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
 import { XMarkIcon, ArrowUpTrayIcon, CameraIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
+import heic2any from 'heic2any';
+import { logger } from '@/utils/logger';
 import md5 from 'md5';
 import { trpc } from '@/utils/trpc';
 import { TOIToDressingRoomStatusMapper, TOI_STATUS } from '@/server/utils/toi-constants';
@@ -152,24 +154,68 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
     }
   };
 
-  // Handle file selection
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle file selection with HEIC support
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setIsUploading(true);
+      setUploadError(null);
       
-      const file = e.target.files[0];
-      const reader = new FileReader();
-      
-      reader.onloadend = () => {
-        const base64String = reader.result as string;
-        // Save to local storage
-        localStorage.setItem('userDressingRoomImage', base64String);
-        setUploadedImage(base64String);
+      try {
+        const file = e.target.files[0];
+        const fileType = file.type.toLowerCase();
+        
+        // Check if file is HEIC format
+        if (fileType === 'image/heic' || fileType === 'image/heif' || file.name.toLowerCase().endsWith('.heic')) {
+          logger.info('Converting HEIC image to JPEG...');
+          
+          try {
+            // Convert HEIC to JPEG
+            const jpegBlob = await heic2any({
+              blob: file,
+              toType: 'image/jpeg',
+              quality: 0.8
+            }) as Blob;
+            
+            logger.info('HEIC conversion successful');
+            
+            // Process the converted JPEG
+            processImageFile(jpegBlob);
+          } catch (conversionError) {
+            logger.error('HEIC conversion failed:', conversionError);
+            setUploadError('Unable to process HEIC image. Please try a different image format (JPEG, PNG).');
+            setIsUploading(false);
+          }
+        } else {
+          // Process non-HEIC images directly
+          processImageFile(file);
+        }
+      } catch (error) {
+        logger.error('Error handling file selection:', error);
+        setUploadError('Failed to process the selected image.');
         setIsUploading(false);
-      };
-      
-      reader.readAsDataURL(file);
+      }
     }
+  };
+  
+  // Process image file (blob or file) to base64
+  const processImageFile = (fileOrBlob: Blob) => {
+    const reader = new FileReader();
+    
+    reader.onloadend = () => {
+      const base64String = reader.result as string;
+      // Save to local storage
+      localStorage.setItem('userDressingRoomImage', base64String);
+      setUploadedImage(base64String);
+      setIsUploading(false);
+    };
+    
+    reader.onerror = () => {
+      logger.error('Error reading file:', reader.error);
+      setUploadError('Failed to read the image file.');
+      setIsUploading(false);
+    };
+    
+    reader.readAsDataURL(fileOrBlob);
   };
 
   // Trigger file input click
