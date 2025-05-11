@@ -51,9 +51,10 @@ let cachedPageContexts: Record<string, PageContext> = {
   'category-women': { name: 'women', value: 1, type: 'category' }
 };
 
-// Helper function to get context key based on filters
-function getContextKey(contextType: 'category' | 'collection', name: string, sortBy?: 'price_asc' | 'price_desc', search?: string): string {
-  let key = `${contextType}-${name}`;
+// Helper function to generate context key
+type PageContextKey = string;
+function getContextKey(type: 'category' | 'collection' | 'all' | 'women' | 'men', name?: string, sortBy?: 'price_asc' | 'price_desc', search?: string): PageContextKey {
+  let key = name ? `${type}-${name}` : `category-${type}`;
   if (sortBy) key += `-${sortBy}`;
   if (search) key += `-${search}`;
   console.log(`getContextKey: ${key}`);
@@ -96,8 +97,22 @@ function HomeContent() {
   // Add a ref to track current context for synchronous access
   const currentContextRef = useRef<PageContext>(cachedPageContexts[contextKey] || { name: category, value: 1, type: 'category' as const });
   
-  const [allProducts, setAllProducts] = useState<ProductType[]>(cachedProducts);
+  // Product data state with pagination
+  const [allProducts, setAllProducts] = useState<ProductType[]>([]);
   const [hasMore, setHasMore] = useState(true);
+  
+  // Cache for products by context key
+  interface ProductsCache {
+    [key: string]: {
+      products: ProductType[];
+      hasMore: boolean;
+      lastUpdated: number;
+    }
+  }
+  
+  // Initialize product cache with an empty object
+  const [productsCache, setProductsCache] = useState<ProductsCache>({});
+  
   const [hasPendingTryOn, setHasPendingTryOn] = useState(false);
   const [pendingTryOnCount, setPendingTryOnCount] = useState(0);
   const [garmentColor, setGarmentColor] = useState('#a1a561');
@@ -188,9 +203,20 @@ function HomeContent() {
         
         // Directly append products without creating intermediate arrays
         console.log(`[useEffect] Fast path optimization - appending ${productData.products.length} products`);
-        setAllProducts(prev => [...prev, ...productData.products]);
-        console.log(`[useEffect] Fast path optimization - setAllProducts: ${allProducts.length}`);
+        const updatedProducts = [...allProducts, ...productData.products];
+        setAllProducts(updatedProducts);
+        console.log(`[useEffect] Fast path optimization - setAllProducts: ${updatedProducts.length}`);
         setHasMore(productData.pagination.hasMore);
+        
+        // Update products cache for this context
+        setProductsCache(prev => ({
+          ...prev,
+          [contextKey]: {
+            products: updatedProducts,
+            hasMore: productData.pagination.hasMore,
+            lastUpdated: Date.now()
+          }
+        }));
         
         // Only update the cached page context for this specific filter combination
         cachedPageContexts[contextKey] = {...currentContextRef.current};
@@ -205,25 +231,37 @@ function HomeContent() {
         // Update all states in a batch
         console.log(`[useEffect] Filter change path - replacing ${productData.products.length} products`);
         setAllProducts(productData.products);
-        console.log(`[useEffect] Filter change path - setAllProducts: ${allProducts.length}`);
+        console.log(`[useEffect] Filter change path - setAllProducts: ${productData.products.length}`);
         setHasMore(productData.pagination.hasMore);
         
+        // Update products cache for this context
+        setProductsCache(prev => ({
+          ...prev,
+          [contextKey]: {
+            products: productData.products,
+            hasMore: productData.pagination.hasMore,
+            lastUpdated: Date.now()
+          }
+        }));
+        
         // Update cache values
-        cachedProducts = productData.products;
+        cachedPageContexts[contextKey] = {...currentContextRef.current};
+        cachedPageContext = {...currentContextRef.current};
         cachedCategory = category;
         cachedSortBy = sortBy;
         cachedSearchTerm = searchTerm;
-        cachedPageContexts[contextKey] = {...currentContextRef.current};
-        cachedPageContext = {...currentContextRef.current};
       }
       
-      // Always mark initial load as complete
+      // No longer processing new data
       isInitialLoad.current = false;
+      console.log(`category: ${category}, cachedCategory: ${cachedCategory}, currentPage: ${currentContextRef.current.value}, cachedPageContexts: ${JSON.stringify(cachedPageContexts, null, 2)}`);
+    } catch (err) {
+      console.error('Error processing product data:', err);
     } finally {
-      // Always reset processing flag when done
+      // No matter what, clear processing flag
       isProcessingData.current = false;
     }
-  }, [productData, currentPage, category, sortBy, searchTerm]);
+  }, [productData, category, sortBy, searchTerm, contextKey]);
   
   // Reset pagination when filters change - separated from data processing for better performance
   useEffect(() => {
@@ -658,9 +696,19 @@ function HomeContent() {
               
               // Don't update cached category yet to ensure query triggers
               
-              // Clear stale products and reset hasMore immediately to prevent showing old data
-              setAllProducts([]);
-              setHasMore(true);
+              // Use cached products if available or clear otherwise
+              const allTabContextKey = getContextKey('all');
+              const cachedData = productsCache[allTabContextKey];
+              
+              if (cachedData) {
+                console.log(`[click] Using cached products for 'all': ${cachedData.products.length} items`);
+                setAllProducts(cachedData.products);
+                setHasMore(cachedData.hasMore);
+              } else {
+                // Clear stale products and reset hasMore if no cache available
+                setAllProducts([]);
+                setHasMore(true);
+              }
               
               // Then update the state for UI (async)
               setCategory('all');
@@ -701,9 +749,19 @@ function HomeContent() {
               
               // Don't update cached category yet to ensure query triggers
               
-              // Clear stale products and reset hasMore immediately to prevent showing old data
-              setAllProducts([]);
-              setHasMore(true);
+              // Use cached products if available or clear otherwise
+              const womenTabContextKey = getContextKey('women');
+              const cachedData = productsCache[womenTabContextKey];
+              
+              if (cachedData) {
+                console.log(`[click] Using cached products for 'women': ${cachedData.products.length} items`);
+                setAllProducts(cachedData.products);
+                setHasMore(cachedData.hasMore);
+              } else {
+                // Clear stale products and reset hasMore if no cache available
+                setAllProducts([]);
+                setHasMore(true);
+              }
               
               // Then update the state for UI (async)
               setCategory('women');
@@ -744,9 +802,19 @@ function HomeContent() {
               
               // Don't update cached category yet to ensure query triggers
               
-              // Clear stale products and reset hasMore immediately to prevent showing old data
-              setAllProducts([]);
-              setHasMore(true);
+              // Use cached products if available or clear otherwise
+              const menTabContextKey = getContextKey('men');
+              const cachedData = productsCache[menTabContextKey];
+              
+              if (cachedData) {
+                console.log(`[click] Using cached products for 'men': ${cachedData.products.length} items`);
+                setAllProducts(cachedData.products);
+                setHasMore(cachedData.hasMore);
+              } else {
+                // Clear stale products and reset hasMore if no cache available
+                setAllProducts([]);
+                setHasMore(true);
+              }
               
               // Then update the state for UI (async)
               setCategory('men');
