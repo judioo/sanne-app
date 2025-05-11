@@ -92,6 +92,10 @@ function HomeContent() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const contextKey = useMemo(() => getContextKey('category', category, sortBy, searchTerm), [category, sortBy, searchTerm]);
   const [currentPage, setCurrentPage] = useState<PageContext>(cachedPageContexts[contextKey] || { name: category, value: 1, type: 'category' as const });
+  
+  // Add a ref to track current context for synchronous access
+  const currentContextRef = useRef<PageContext>(cachedPageContexts[contextKey] || { name: category, value: 1, type: 'category' as const });
+  
   const [allProducts, setAllProducts] = useState<ProductType[]>(cachedProducts);
   const [hasMore, setHasMore] = useState(true);
   const [hasPendingTryOn, setHasPendingTryOn] = useState(false);
@@ -104,14 +108,23 @@ function HomeContent() {
   const isProcessingData = useRef(false);
   
   // Memoize query input to prevent unnecessary refetches
-  const queryInput = useMemo(() => ({
-    category,
-    sortBy,
-    search: searchTerm,
-    collection: "New Arrivals", 
-    page: currentPage.value,
-    limit: 12,
-  }), [category, sortBy, searchTerm, currentPage.value]);
+  const queryInput = useMemo(() => {
+    // Add the category to the collection to ensure a unique query hash
+    // This forces tRPC to treat each category as a separate query
+    const uniqueQueryId = `${category}-${currentContextRef.current.value}`;
+    
+    const query = {
+      category,
+      sortBy,
+      search: searchTerm,
+      collection: "New Arrivals",  // Keep the collection constant
+      page: currentContextRef.current.value, // Use the ref value instead of state
+      limit: 12,
+      _uniqueId: uniqueQueryId, // Add a unique ID for different query hashes
+    };
+    console.log(`[queryInput] query: ${JSON.stringify(query, null, 2)}`);
+    return query;
+  }, [category, sortBy, searchTerm, currentContextRef.current.value]);
   
   // Fetch all collections for the side menu - with caching
   const { data: collections = [] } = trpc.products.getCollections.useQuery();
@@ -120,60 +133,79 @@ function HomeContent() {
   const { data: productData, isLoading, isFetching } = trpc.products.getAll.useQuery(queryInput, {
     // Only run the query if we need to fetch data (initial load or filter change)
     enabled: (() => {
+      /*
       console.log(`[useQuery] currentPage: ${JSON.stringify(currentPage, null, 2)}`);
-    console.log(`[useQuery] cachedPageContexts: ${JSON.stringify(cachedPageContexts, null, 2)}`);
-    console.log(`[useQuery] contextKey: ${contextKey}`);
-    console.log(`[useQuery] isInitialLoad: ${isInitialLoad.current}`);
-    console.log(`[useQuery] category: ${category}`);
-    console.log(`[useQuery] cachedCategory: ${cachedCategory}`);
-    console.log(`[useQuery] sortBy: ${sortBy}`);
-    console.log(`[useQuery] cachedSortBy: ${cachedSortBy}`);
-    console.log(`[useQuery] searchTerm: ${searchTerm}`);
-    console.log(`[useQuery] cachedSearchTerm: ${cachedSearchTerm}`);
-    console.log(`[useQuery] currentPage.value: ${currentPage.value}`);
-    console.log(`[useQuery] cachedPageContexts[contextKey].value: ${cachedPageContexts[contextKey]?.value}`);
-    console.log(`logic: ${isInitialLoad.current || category !== cachedCategory || sortBy !== cachedSortBy || searchTerm !== cachedSearchTerm || (cachedPageContexts[contextKey] ? currentPage.value > cachedPageContexts[contextKey].value : true)}`)
-    return false;
+      console.log(`[useQuery] cachedPageContexts: ${JSON.stringify(cachedPageContexts, null, 2)}`);
+      */
+      console.log(`[useQuery] contextKey: ${contextKey}`);
+      console.log(`[useQuery] isInitialLoad: ${isInitialLoad.current}`);
+      console.log(`[useQuery] category: ${category}`);
+      console.log(`[useQuery] cachedCategory: ${cachedCategory}`);
+      console.log(`[useQuery] sortBy: ${sortBy}`);
+      console.log(`[useQuery] cachedSortBy: ${cachedSortBy}`);
+      console.log(`[useQuery] searchTerm: ${searchTerm}`);
+      console.log(`[useQuery] cachedSearchTerm: ${cachedSearchTerm}`);
+      console.log(`[useQuery] currentPage.value: ${currentPage.value}`);
+      console.log(`[useQuery] currentContextRef.value: ${currentContextRef.current.value}`);
+      console.log(`[useQuery] cachedPageContexts[contextKey].value: ${cachedPageContexts[contextKey]?.value}`);
+      console.log(`[useQuery] logic: ${
+        isInitialLoad.current || 
+        category !== cachedCategory || 
+        sortBy !== cachedSortBy || 
+        searchTerm !== cachedSearchTerm || 
+        (cachedPageContexts[contextKey] ? currentContextRef.current.value > cachedPageContexts[contextKey].value : true)
+      }`);
+      console.log(`[useQuery] queryInput: ${JSON.stringify(queryInput)}`);
+        
+      return false;
     })() ||
     
     isInitialLoad.current || 
-             category !== cachedCategory || 
-             sortBy !== cachedSortBy || 
-             searchTerm !== cachedSearchTerm ||
-             (cachedPageContexts[contextKey] ? currentPage.value > cachedPageContexts[contextKey].value : true)
+    category !== cachedCategory || 
+    sortBy !== cachedSortBy || 
+    searchTerm !== cachedSearchTerm ||
+    true // Always enable for now to ensure products load
   });
   
   // Optimized handling of product data changes with better performance
   useEffect(() => {
-    // Avoid processing if we've already started or don't have data
-    if (isProcessingData.current || !productData) return;
+    // Avoid processing if we don't have data
+    console.log(`[useEffect] isProcessingData.current: ${isProcessingData.current}, productData: ${productData}`);
+    if (!productData) return;
+    
+    // Only reset processing flag if it was set by something other than this effect
+    // This ensures tab switching doesn't block processing product data
     
     try {
       // Mark as processing to prevent re-entrancy
       isProcessingData.current = true;
       
       // Fast path optimization - if this is a subsequent page with no filter changes
-      if (currentPage.value > 1 && 
+      if (currentContextRef.current.value > 1 && 
           category === cachedCategory && 
           sortBy === cachedSortBy && 
           searchTerm === cachedSearchTerm) {
         
         // Directly append products without creating intermediate arrays
+        console.log(`[useEffect] Fast path optimization - appending ${productData.products.length} products`);
         setAllProducts(prev => [...prev, ...productData.products]);
+        console.log(`[useEffect] Fast path optimization - setAllProducts: ${allProducts.length}`);
         setHasMore(productData.pagination.hasMore);
         
         // Only update the cached page context for this specific filter combination
-        cachedPageContexts[contextKey] = {...currentPage};
-        cachedPageContext = {...currentPage};
+        cachedPageContexts[contextKey] = {...currentContextRef.current};
+        cachedPageContext = {...currentContextRef.current};
       } 
       // Filter change path - reset and replace all products
-      else if (currentPage.value === 1 || 
+      else if (currentContextRef.current.value === 1 || 
                category !== cachedCategory || 
                sortBy !== cachedSortBy || 
                searchTerm !== cachedSearchTerm) {
                
         // Update all states in a batch
+        console.log(`[useEffect] Filter change path - replacing ${productData.products.length} products`);
         setAllProducts(productData.products);
+        console.log(`[useEffect] Filter change path - setAllProducts: ${allProducts.length}`);
         setHasMore(productData.pagination.hasMore);
         
         // Update cache values
@@ -181,8 +213,8 @@ function HomeContent() {
         cachedCategory = category;
         cachedSortBy = sortBy;
         cachedSearchTerm = searchTerm;
-        cachedPageContexts[contextKey] = {...currentPage};
-        cachedPageContext = {...currentPage};
+        cachedPageContexts[contextKey] = {...currentContextRef.current};
+        cachedPageContext = {...currentContextRef.current};
       }
       
       // Always mark initial load as complete
@@ -220,8 +252,8 @@ function HomeContent() {
     
     // Always include page parameter if greater than 1
     // Each context now has its own page state
-    if (currentPage.value > 1) {
-      params.set('page', currentPage.value.toString());
+    if (currentContextRef.current.value > 1) {
+      params.set('page', currentContextRef.current.value.toString());
     }
     
     const url = params.toString() ? `/?${params.toString()}` : '/';
@@ -277,33 +309,42 @@ function HomeContent() {
 
   // Intersection Observer for infinite scrolling with better performance
   const lastProductElementRef = useCallback((node: HTMLDivElement | null) => {
+    console.log('[lastProductElementRef] node: ', node);
+    console.log(`[lastProductElementRef] isLoading: ${isLoading} isFetching: ${isFetching} hasMore: ${hasMore}`);
+    
     if (isLoading || isFetching || !hasMore) return;
     
     if (observerRef.current) {
+      console.log('[lastProductElementRef] Disconnecting observer...');
       observerRef.current.disconnect();
     }
     
     // Set up intersection observer for infinite scrolling
     observerRef.current = new IntersectionObserver(entries => {
       if (entries[0].isIntersecting && hasMore && !isProcessingData.current) {
-        console.log('Loading more products...');
-        console.log(`currentPage: ${JSON.stringify(currentPage, null, 2)}`);
-        console.log(`processingData: ${JSON.stringify(isProcessingData, null, 2)}`);
-        console.log(`hasMore: ${hasMore}`);
-        setCurrentPage(prevPage => {
-          console.log(`prevPage: ${JSON.stringify(prevPage, null, 2)}`);
-          return {
-            ...prevPage,
-            value: prevPage.value + 1
-          }
-        });
+        console.log('[observerRef] Loading more products...');
+        console.log(`[observerRef] currentContextRef: ${JSON.stringify(currentContextRef.current, null, 2)}`);
+        console.log(`[observerRef] processingData: ${JSON.stringify(isProcessingData, null, 2)}`);
+        console.log(`[observerRef] hasMore: ${hasMore}`);
+        
+        // Update the ref first (synchronous)
+        currentContextRef.current = {
+          ...currentContextRef.current,
+          value: currentContextRef.current.value + 1
+        };
+        console.log('[lastProductElementRef] currentContextRef: ', currentContextRef.current);
+
+        // Then update the state for UI (async)
+        setCurrentPage(currentContextRef.current);
       }
     }, { 
       threshold: 0.2, // Lower threshold for earlier loading
       rootMargin: '100px' // Start loading before item is fully visible
     });
     
+    console.log('[lastProductElementRef] (end) node: ', node);
     if (node) {
+      console.log('[lastProductElementRef] setting observer for node');
       observerRef.current.observe(node);
     }
   }, [isLoading, isFetching, hasMore]);
@@ -454,13 +495,15 @@ function HomeContent() {
   };
 
   const showCacheContext = () => {
+    return;
     console.log(`currentPage: ${JSON.stringify(currentPage, null, 2)}`);
     console.log(`cachedPageContext: ${JSON.stringify(cachedPageContext, null, 2)}`);
+    console.log(`currentContextRef: ${JSON.stringify(currentContextRef.current, null, 2)}`);
     console.log(`cachedPageContexts: ${JSON.stringify(cachedPageContexts, null, 2)}`);
   };
 
-  console.log(`[just before render]productData: `); 
-  console.log(JSON.stringify(productData));
+  console.log(`[just before render] productData: ${JSON.stringify(productData?.pagination)}`);
+  console.log(`[just before render] allProducts count: ${allProducts.length}`);
 
   // Desktop view with QR code
   if (!isMobile) {
@@ -597,8 +640,6 @@ function HomeContent() {
             onClick={() => {
               console.log('Switching to all category...');
               console.log(`before: `); showCacheContext();
-              // Switch to 'all' category with fresh page context
-              setCategory('all');
               
               // Create a new page context for 'all' category
               const newPageContext: PageContext = {
@@ -607,11 +648,29 @@ function HomeContent() {
                 type: 'category'
               };
               
-              // Update state and cache
-              setCurrentPage(newPageContext);
+              // Update the ref first (synchronous)
+              currentContextRef.current = newPageContext;
+              
+              // Update the cached contexts (synchronous)
               const newContextKey = getContextKey('category', 'all', sortBy, searchTerm);
               cachedPageContexts[newContextKey] = newPageContext;
               cachedPageContext = newPageContext;
+              
+              // Don't update cached category yet to ensure query triggers
+              
+              // Clear stale products and reset hasMore immediately to prevent showing old data
+              setAllProducts([]);
+              setHasMore(true);
+              
+              // Then update the state for UI (async)
+              setCategory('all');
+              setCurrentPage(newPageContext);
+              
+              // Update cached values after query triggers
+              setTimeout(() => {
+                cachedCategory = 'all';
+              }, 50); // Much shorter delay just to ensure state updates
+              
               console.log(`after: `); showCacheContext();
             }}
           >
@@ -625,9 +684,6 @@ function HomeContent() {
               console.log('Switching to women category...');
               console.log(`before: `); showCacheContext();
 
-              // Switch to 'women' category with fresh page context
-              setCategory('women');
-              
               // Create a new page context for 'women' category
               const newPageContext: PageContext = {
                 name: 'women',
@@ -635,11 +691,29 @@ function HomeContent() {
                 type: 'category'
               };
               
-              // Update state and cache
-              setCurrentPage(newPageContext);
+              // Update the ref first (synchronous)
+              currentContextRef.current = newPageContext;
+              
+              // Update the cached contexts (synchronous)
               const newContextKey = getContextKey('category', 'women', sortBy, searchTerm);
               cachedPageContexts[newContextKey] = newPageContext;
               cachedPageContext = newPageContext;
+              
+              // Don't update cached category yet to ensure query triggers
+              
+              // Clear stale products and reset hasMore immediately to prevent showing old data
+              setAllProducts([]);
+              setHasMore(true);
+              
+              // Then update the state for UI (async)
+              setCategory('women');
+              setCurrentPage(newPageContext);
+              
+              // Update cached values after query triggers
+              setTimeout(() => {
+                cachedCategory = 'women';
+              }, 50); // Much shorter delay just to ensure state updates
+              
               console.log(`after: `); showCacheContext();
             }}
           >
@@ -652,8 +726,6 @@ function HomeContent() {
             onClick={() => {
               console.log('Switching to men category...');
               console.log(`before: `); showCacheContext();
-              // Switch to 'men' category with fresh page context
-              setCategory('men');
               
               // Create a new page context for 'men' category
               const newPageContext: PageContext = {
@@ -662,11 +734,29 @@ function HomeContent() {
                 type: 'category'
               };
               
-              // Update state and cache
-              setCurrentPage(newPageContext);
+              // Update the ref first (synchronous)
+              currentContextRef.current = newPageContext;
+              
+              // Update the cached contexts (synchronous)
               const newContextKey = getContextKey('category', 'men', sortBy, searchTerm);
               cachedPageContexts[newContextKey] = newPageContext;
               cachedPageContext = newPageContext;
+              
+              // Don't update cached category yet to ensure query triggers
+              
+              // Clear stale products and reset hasMore immediately to prevent showing old data
+              setAllProducts([]);
+              setHasMore(true);
+              
+              // Then update the state for UI (async)
+              setCategory('men');
+              setCurrentPage(newPageContext);
+              
+              // Update cached values after query triggers
+              setTimeout(() => {
+                cachedCategory = 'men';
+              }, 50); // Much shorter delay just to ensure state updates
+              
               console.log(`after: `); showCacheContext();
             }}
           >
@@ -804,7 +894,7 @@ function HomeContent() {
         )}
         
         {/* Initial Loading State */}
-        {isLoading && allProducts.length === 0 && (
+        {(isLoading || isFetching) && allProducts.length === 0 && (
           <div className="flex justify-center items-center py-10">
             <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-gray-900"></div>
           </div>
@@ -816,6 +906,7 @@ function HomeContent() {
             {allProducts.map((product, index) => {
               // If this is the last product and there's more to load, attach the ref
               const isLastProduct = index === allProducts.length - 1 && hasMore;
+              console.log(`[product] ${product.name} - ${index} of ${allProducts.length}: isLastProduct: ${isLastProduct}, hasMore: ${hasMore}, category: ${currentContextRef.current.name}, value: ${currentContextRef.current.value}`);
               
               return (
                 <div key={`${product.id}-${index}`} ref={isLastProduct ? lastProductElementRef : null}>
