@@ -3,6 +3,13 @@ import { Geist, Geist_Mono } from "next/font/google"
 import Providers from '@/app/providers'
 import { TRPCProvider } from './trpc-provider'
 import { Metadata } from 'next'
+import { setLogLevel } from '@/utils/logger'
+
+// Set log level based on environment
+if (typeof window !== 'undefined') {
+  const isDev = process.env.NODE_ENV === 'development';
+  setLogLevel(isDev ? 'debug' : 'warn');
+}
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
