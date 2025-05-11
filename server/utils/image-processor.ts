@@ -178,6 +178,7 @@ export async function processImageWithAI(
         n: 1,
         size: "1024x1536", //"1024x1024",
         quality: "medium",
+        moderation: "low",
         background: "auto"
       });
       
