@@ -265,25 +265,86 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
     }
   };
   
+  // Convert image to WebP format for better compression
+  const convertToWebP = (imageDataUrl: string): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      // Create an image element
+      const img = document.createElement('img');
+      
+      img.onload = () => {
+        // Create canvas and draw image
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Could not get canvas context'));
+          return;
+        }
+        
+        // Draw the image on the canvas
+        ctx.drawImage(img, 0, 0);
+        
+        // Convert to WebP with 0.8 quality (good balance of quality and size)
+        try {
+          const webpDataUrl = canvas.toDataURL('image/webp', 0.8);
+          resolve(webpDataUrl);
+        } catch (error) {
+          logger.error('WebP conversion failed:', error);
+          // Fallback to original if WebP conversion fails
+          resolve(imageDataUrl);
+        }
+      };
+      
+      img.onerror = () => {
+        logger.error('Error loading image for WebP conversion');
+        reject(new Error('Failed to load image for WebP conversion'));
+      };
+      
+      // Set source to the original image data URL
+      img.src = imageDataUrl;
+    });
+  };
+  
   // Process image file (blob or file) to base64
   const processImageFile = (fileOrBlob: Blob) => {
     const reader = new FileReader();
     
     reader.onloadend = async () => {
-      const base64String = reader.result as string;
-      // Save to local storage with error handling for quota exceeded
+      const originalBase64 = reader.result as string;
+      let optimizedBase64 = originalBase64;
+      
       try {
-        localStorage.setItem('userDressingRoomImage', base64String);
-        setUploadedImage(base64String);
+        // Show optimizing indicator
+        toast.loading('Optimizing image...', { id: 'optimize-toast' });
+        
+        // Try to convert to WebP for better compression
+        try {
+          optimizedBase64 = await convertToWebP(originalBase64);
+          const compressionRate = Math.round((1 - (optimizedBase64.length / originalBase64.length)) * 100);
+          if (compressionRate > 0) {
+            logger.info(`WebP conversion reduced size by ${compressionRate}%`);
+          }
+        } catch (convError) {
+          logger.error('Error converting to WebP, using original format:', convError);
+          // Keep using original if conversion fails
+          optimizedBase64 = originalBase64;
+        }
+        
+        toast.dismiss('optimize-toast');
+        
+        // Save to local storage with error handling for quota exceeded
+        localStorage.setItem('userDressingRoomImage', optimizedBase64);
+        setUploadedImage(optimizedBase64);
         setIsUploading(false);
         toast.success('Image processed successfully');
       } catch (storageError) {
         logger.error('localStorage quota exceeded:', storageError);
-        setUploadedImage(base64String); // Still set the image in memory
+        setUploadedImage(optimizedBase64); // Still set the image in memory
         setIsUploading(false);
         
         // Show user-friendly toast about storage limitations
-        toast.error('Unable to save image to browser storage. The image is too large, but we can still process it.', {
+        toast.error('Unable to save image locally in your browser as its too large. However we will still process it.', {
           duration: 6000,
         });
         
@@ -292,7 +353,10 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
           const posthog = (await import('posthog-js')).default;
           posthog.capture('localStorage_quota_exceeded', {
             properties: {
-              fileSize: base64String.length,
+              fileSize: optimizedBase64.length,
+              originalSize: originalBase64.length,
+              compressionAttempted: optimizedBase64 !== originalBase64,
+              compressionRate: Math.round((1 - (optimizedBase64.length / originalBase64.length)) * 100),
               productId: product.id,
               errorMessage: storageError instanceof Error ? storageError.message : 'Unknown storage error'
             }
