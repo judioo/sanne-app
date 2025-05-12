@@ -434,7 +434,7 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
         const posthog = (await import('posthog-js')).default;
         posthog.capture('Error uploading image to dressing room', {
           properties: {
-            error: error
+            error: JSON.stringify(error)
           }
         });
       } catch (analyticError) {
