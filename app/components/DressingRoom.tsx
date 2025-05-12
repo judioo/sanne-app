@@ -532,6 +532,13 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
       
       // Show loading toast that persists until success/error
       toast.loading('Processing image - this may take a moment...', { id: 'upload-toast' });
+      const posthog = (await import('posthog-js')).default;
+      posthog.capture('Calling uploadToDressingRoom', {
+        properties: {
+          productId: product.id,
+          imgMD5: `${imgMD5Hash.substring(0, 8)}`
+        }
+      });
       
       // Call the TRPC endpoint
       uploadToDressingRoom({
