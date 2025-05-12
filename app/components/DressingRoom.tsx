@@ -265,45 +265,55 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
     }
   };
   
-  // Convert image to WebP format for better compression
-  const convertToWebP = (imageDataUrl: string): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      // Create an image element
-      const img = document.createElement('img');
+  // Cleanup localStorage to make room for new images
+  const cleanupLocalStorage = () => {
+    try {
+      // First try to remove the previous image which is usually the largest item
+      localStorage.removeItem('userDressingRoomImage');
       
-      img.onload = () => {
-        // Create canvas and draw image
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          reject(new Error('Could not get canvas context'));
-          return;
+      // Calculate current localStorage usage
+      let totalSize = 0;
+      let items: {key: string, size: number}[] = [];
+      
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key) {
+          const value = localStorage.getItem(key) || '';
+          const size = (key.length + value.length) * 2; // Unicode characters take 2 bytes
+          totalSize += size;
+          items.push({ key, size });
         }
+      }
+      
+      const usageInMB = totalSize / (1024 * 1024);
+      logger.info(`Current localStorage usage: ~${usageInMB.toFixed(2)}MB`);
+      
+      // If still using more than 3MB, clean up more aggressively
+      if (usageInMB > 3) {
+        logger.info('Storage usage high, cleaning up additional items');
         
-        // Draw the image on the canvas
-        ctx.drawImage(img, 0, 0);
+        // Sort items by size (largest first) and remove non-essential items
+        items.sort((a, b) => b.size - a.size);
         
-        // Convert to WebP with 0.8 quality (good balance of quality and size)
-        try {
-          const webpDataUrl = canvas.toDataURL('image/webp', 0.8);
-          resolve(webpDataUrl);
-        } catch (error) {
-          logger.error('WebP conversion failed:', error);
-          // Fallback to original if WebP conversion fails
-          resolve(imageDataUrl);
+        // Define essential keys that shouldn't be removed
+        const essentialKeys = ['criticalAppSettings', 'userPreferences', 'tryOnItems'];
+        
+        // Remove largest non-essential items first
+        for (const item of items) {
+          if (!essentialKeys.includes(item.key)) {
+            localStorage.removeItem(item.key);
+            logger.info(`Removed item: ${item.key} (${(item.size/1024).toFixed(2)}KB)`);
+            // Break after removing a few items to avoid excessive cleanup
+            if (items.indexOf(item) >= 3) break;
+          }
         }
-      };
+      }
       
-      img.onerror = () => {
-        logger.error('Error loading image for WebP conversion');
-        reject(new Error('Failed to load image for WebP conversion'));
-      };
-      
-      // Set source to the original image data URL
-      img.src = imageDataUrl;
-    });
+      return true;
+    } catch (error) {
+      logger.error('Error during localStorage cleanup:', error);
+      return false;
+    }
   };
   
   // Process image file (blob or file) to base64
@@ -311,40 +321,136 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
     const reader = new FileReader();
     
     reader.onloadend = async () => {
-      const originalBase64 = reader.result as string;
-      let optimizedBase64 = originalBase64;
+      const base64String = reader.result as string;
       
       try {
-        // Show optimizing indicator
-        toast.loading('Optimizing image...', { id: 'optimize-toast' });
+        // Try to optimize the image first using WebP conversion
+        toast.loading('Optimising image...', { id: 'optimise-toast' });
         
-        // Try to convert to WebP for better compression
+        let optimizedImage = base64String;
         try {
-          optimizedBase64 = await convertToWebP(originalBase64);
-          const compressionRate = Math.round((1 - (optimizedBase64.length / originalBase64.length)) * 100);
+          // Create a function to convert to WebP
+          const convertToWebP = (dataUrl: string): Promise<string> => {
+            return new Promise((resolve, reject) => {
+              const img = document.createElement('img');
+              img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                  reject(new Error('Could not get canvas context'));
+                  return;
+                }
+                
+                ctx.drawImage(img, 0, 0);
+                try {
+                  const webpDataUrl = canvas.toDataURL('image/webp', 0.8);
+                  resolve(webpDataUrl);
+                } catch (err) {
+                  // Fallback to original if WebP not supported
+                  resolve(dataUrl);
+                }
+              };
+              img.onerror = () => reject(new Error('Image load failed'));
+              img.src = dataUrl;
+            });
+          };
+          
+          // Convert to WebP for better compression
+          optimizedImage = await convertToWebP(base64String);
+          const compressionRate = Math.round((1 - (optimizedImage.length / base64String.length)) * 100);
+          
           if (compressionRate > 0) {
             logger.info(`WebP conversion reduced size by ${compressionRate}%`);
+            
+            // Track the optimization in PostHog
+            try {
+              const posthog = (await import('posthog-js')).default;
+              posthog.capture('Image optimised', {
+                properties: {
+                  compressionRate,
+                  originalSize: base64String.length,
+                  optimizedSize: optimizedImage.length
+                }
+              });
+            } catch (analyticsError) {
+              logger.error('Error capturing optimization analytics:', analyticsError);
+            }
           }
-        } catch (convError) {
-          logger.error('Error converting to WebP, using original format:', convError);
-          // Keep using original if conversion fails
-          optimizedBase64 = originalBase64;
+        } catch (optimizationError) {
+          logger.error('Image optimization failed:', optimizationError);
+          // Continue with the original image if optimization fails
+          optimizedImage = base64String;
         }
         
-        toast.dismiss('optimize-toast');
+        toast.dismiss('optimise-toast');
         
-        // Save to local storage with error handling for quota exceeded
-        localStorage.setItem('userDressingRoomImage', optimizedBase64);
-        setUploadedImage(optimizedBase64);
-        setIsUploading(false);
-        toast.success('Image processed successfully');
+        // Clean up localStorage before saving the new image
+        cleanupLocalStorage();
+        
+        try {
+          // Save to local storage with error handling for quota exceeded
+          localStorage.setItem('userDressingRoomImage', optimizedImage);
+          setUploadedImage(optimizedImage);
+          setIsUploading(false);
+          toast.success('Image processed successfully');
+        } catch (storageError) {
+          // First save attempt failed, try more aggressive cleanup
+          logger.warn('Initial save failed despite cleanup, attempting to clear all non-essential data');
+          
+          // Clear everything except essential app data
+          for (let i = localStorage.length - 1; i >= 0; i--) {
+            const key = localStorage.key(i);
+            if (key && key !== 'tryOnItems' && key !== 'criticalAppSettings') {
+              localStorage.removeItem(key);
+            }
+          }
+          
+          // Try one more time
+          try {
+            localStorage.setItem('userDressingRoomImage', optimizedImage);
+            setUploadedImage(optimizedImage);
+            setIsUploading(false);
+            toast.success('Image processed successfully');
+          } catch (finalError) {
+            // If still fails, proceed with the image in memory only
+            logger.error('localStorage quota exceeded even after aggressive cleanup:', finalError);
+            setUploadedImage(optimizedImage); // Still set the image in memory
+            setIsUploading(false);
+            
+            // Show user-friendly toast about storage limitations
+            toast.error('Unable to save image locally in your browser as its too large. However we will still process it.', {
+              duration: 6000,
+            });
+            
+            // Track the error in PostHog
+            try {
+              const posthog = (await import('posthog-js')).default;
+              posthog.capture('localStorage_quota_exceeded', {
+                properties: {
+                  fileSize: optimizedImage.length,
+                  originalSize: base64String.length,
+                  compressionAttempted: optimizedImage !== base64String,
+                  compressionRate: optimizedImage !== base64String ? 
+                    Math.round((1 - (optimizedImage.length / base64String.length)) * 100) : 0,
+                  productId: product.id,
+                  errorMessage: finalError instanceof Error ? finalError.message : 'Unknown storage error',
+                  afterAggressiveCleanup: true
+                }
+              });
+            } catch (analyticsError) {
+              logger.error('Error capturing quota exceeded analytics:', analyticsError);
+            }
+          }
+        }
       } catch (storageError) {
         logger.error('localStorage quota exceeded:', storageError);
-        setUploadedImage(optimizedBase64); // Still set the image in memory
+        setUploadedImage(base64String); // Still set the image in memory
         setIsUploading(false);
         
         // Show user-friendly toast about storage limitations
-        toast.error('Unable to save image locally in your browser as its too large. However we will still process it.', {
+        toast.error('Unable to save image to browser storage. The image is too large, but we can still process it.', {
           duration: 6000,
         });
         
@@ -353,10 +459,7 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
           const posthog = (await import('posthog-js')).default;
           posthog.capture('localStorage_quota_exceeded', {
             properties: {
-              fileSize: optimizedBase64.length,
-              originalSize: originalBase64.length,
-              compressionAttempted: optimizedBase64 !== originalBase64,
-              compressionRate: Math.round((1 - (optimizedBase64.length / originalBase64.length)) * 100),
+              fileSize: base64String.length,
               productId: product.id,
               errorMessage: storageError instanceof Error ? storageError.message : 'Unknown storage error'
             }
