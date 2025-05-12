@@ -3,12 +3,13 @@
 import { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
 import { XMarkIcon, ArrowUpTrayIcon, CameraIcon, ChevronLeftIcon, ChevronRightIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
-import heic2any from 'heic2any';
+// Dynamic import heic2any to prevent SSR issues
 import { logger } from '@/utils/logger';
 import md5 from 'md5';
 import { trpc } from '@/utils/trpc';
 import { TOIToDressingRoomStatusMapper, TOI_STATUS } from '@/server/utils/toi-constants';
 import toast from 'react-hot-toast';
+// PostHog will be initialized in useEffect to prevent SSR issues
 
 type DressingRoomProps = {
   product: any; // Product details
@@ -31,6 +32,22 @@ type TryOnItem = {
 };
 
 export default function DressingRoom({ product, onClose, startWithClosedCurtains = false }: DressingRoomProps) {
+  // Initialize client-side libraries in useEffect
+  useEffect(() => {
+    // Import and initialize PostHog
+    import('posthog-js').then((module) => {
+      const posthog = module.default;
+      // Initialize PostHog if needed
+      if (typeof window !== 'undefined') {
+        // PostHog init logic here if needed
+      }
+    });
+    
+    // Set log level on client-side only
+    import('@/utils/logger').then(({ setLogLevel }) => {
+      setLogLevel("debug");
+    });
+  }, []);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -168,8 +185,27 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
         // Check if file is HEIC format
         if (fileType === 'image/heic' || fileType === 'image/heif' || file.name.toLowerCase().endsWith('.heic')) {
           logger.info('Converting HEIC image to JPEG...');
+          toast.loading('Converting HEIC image...', { id: 'heic-conversion' });
           
           try {
+            // Dynamically import heic2any
+            const heic2anyModule = await import('heic2any');
+            const heic2any = heic2anyModule.default;
+            
+            // Capture analytics
+            try {
+              const posthog = (await import('posthog-js')).default;
+              posthog.capture('HEIC conversion started', {
+                properties: {
+                  fileType,
+                  fileName: file.name,
+                  fileSize: file.size
+                }
+              });
+            } catch (analyticError) {
+              logger.error('Error capturing analytics:', analyticError);
+            }
+            
             // Convert HEIC to JPEG
             const jpegBlob = await heic2any({
               blob: file,
@@ -178,13 +214,30 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
             }) as Blob;
             
             logger.info('HEIC conversion successful');
+            toast.dismiss('heic-conversion');
+            toast.success('HEIC image converted successfully');
             
             // Process the converted JPEG
             processImageFile(jpegBlob);
           } catch (conversionError) {
             logger.error('HEIC conversion failed:', conversionError);
+            
+            // Capture analytics
+            try {
+              const posthog = (await import('posthog-js')).default;
+              posthog.capture('HEIC conversion failed', {
+                properties: {
+                  error: conversionError
+                }
+              });
+            } catch (analyticError) {
+              logger.error('Error capturing analytics:', analyticError);
+            }
+            
             setUploadError('Unable to process HEIC image. Please try a different image format (JPEG, PNG).');
             setIsUploading(false);
+            toast.dismiss('heic-conversion');
+            toast.error('Unable to process HEIC image. Please try a different format.');
           }
         } else {
           // Process non-HEIC images directly
@@ -192,6 +245,19 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
         }
       } catch (error) {
         logger.error('Error handling file selection:', error);
+        
+        // Capture analytics
+        try {
+          const posthog = (await import('posthog-js')).default;
+          posthog.capture('Error handling file selection', {
+            properties: {
+              error: error
+            }
+          });
+        } catch (analyticError) {
+          logger.error('Error capturing analytics:', analyticError);
+        }
+        
         setUploadError('Failed to process the selected image.');
         setIsUploading(false);
         toast.error('Failed to process the selected image.');
@@ -212,8 +278,21 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
       toast.success('Image processed successfully');
     };
     
-    reader.onerror = () => {
+    reader.onerror = async () => {
       logger.error('Error reading file:', reader.error);
+      
+      // Capture analytics
+      try {
+        const posthog = (await import('posthog-js')).default;
+        posthog.capture('Error reading file', {
+          properties: {
+            error: reader.error
+          }
+        });
+      } catch (analyticError) {
+        logger.error('Error capturing analytics:', analyticError);
+      }
+      
       setUploadError('Failed to read the image file.');
       setIsUploading(false);
       toast.error('Failed to read the image file. Please try again.');
@@ -316,8 +395,22 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
   
   // Set up TRPC mutation for image upload
   const { mutateAsync: uploadToDressingRoom } = trpc.products.toDressingRoom.useMutation({
-    onSuccess: (result, variables) => {
+    onSuccess: async (result, variables) => {
       logger.info(`Successfully uploaded image with MD5 ${variables.imgMD5.substring(0, 8)} to dressing room:`, result);
+      
+      // Capture analytics
+      try {
+        const posthog = (await import('posthog-js')).default;
+        posthog.capture('Image uploaded to dressing room', {
+          properties: {
+            TOIID: result.TOIID,
+            imgMD5: variables.imgMD5,
+            productId: variables.productId
+          }
+        });
+      } catch (analyticError) {
+        logger.error('Error capturing analytics:', analyticError);
+      }
       
       // Dismiss loading toast
       toast.dismiss('upload-toast');
@@ -333,8 +426,20 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
         toast.success('Image uploaded successfully!');
       }
     },
-    onError: (error) => {
+    onError: async (error) => {
       logger.error('Error uploading image to dressing room:', error);
+      
+      // Capture analytics
+      try {
+        const posthog = (await import('posthog-js')).default;
+        posthog.capture('Error uploading image to dressing room', {
+          properties: {
+            error: error
+          }
+        });
+      } catch (analyticError) {
+        logger.error('Error capturing analytics:', analyticError);
+      }
       setUploadError('Failed to process image. Please try again.');
       setIsProcessing(false);
       
