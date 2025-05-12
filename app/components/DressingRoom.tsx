@@ -2,12 +2,13 @@
 
 import { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
-import { XMarkIcon, ArrowUpTrayIcon, CameraIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, ArrowUpTrayIcon, CameraIcon, ChevronLeftIcon, ChevronRightIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
 import heic2any from 'heic2any';
 import { logger } from '@/utils/logger';
 import md5 from 'md5';
 import { trpc } from '@/utils/trpc';
 import { TOIToDressingRoomStatusMapper, TOI_STATUS } from '@/server/utils/toi-constants';
+import toast from 'react-hot-toast';
 
 type DressingRoomProps = {
   product: any; // Product details
@@ -193,6 +194,7 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
         logger.error('Error handling file selection:', error);
         setUploadError('Failed to process the selected image.');
         setIsUploading(false);
+        toast.error('Failed to process the selected image.');
       }
     }
   };
@@ -207,12 +209,14 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
       localStorage.setItem('userDressingRoomImage', base64String);
       setUploadedImage(base64String);
       setIsUploading(false);
+      toast.success('Image processed successfully');
     };
     
     reader.onerror = () => {
       logger.error('Error reading file:', reader.error);
       setUploadError('Failed to read the image file.');
       setIsUploading(false);
+      toast.error('Failed to read the image file. Please try again.');
     };
     
     reader.readAsDataURL(fileOrBlob);
@@ -313,19 +317,30 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
   // Set up TRPC mutation for image upload
   const { mutateAsync: uploadToDressingRoom } = trpc.products.toDressingRoom.useMutation({
     onSuccess: (result, variables) => {
-      console.log('Image upload to dressing room successful');
-      console.log('TOIID:', result.TOIID);
+      logger.info(`Successfully uploaded image with MD5 ${variables.imgMD5.substring(0, 8)} to dressing room:`, result);
+      
+      // Dismiss loading toast
+      toast.dismiss('upload-toast');
       setUploadError(null);
       
       // Update localStorage with the result
       updateTryOnItemWithResults(result, variables.imgMD5);
-      // We don't reset isProcessing here because we want the button to remain disabled
-      // until the user is redirected away from this screen
+      
+      // Show success toast with TOIID if available
+      if (result.TOIID) {
+        displaySuccessWithTOIID(result.TOIID);
+      } else {
+        toast.success('Image uploaded successfully!');
+      }
     },
     onError: (error) => {
-      console.error('Error uploading image to dressing room:', error);
+      logger.error('Error uploading image to dressing room:', error);
       setUploadError('Failed to process image. Please try again.');
       setIsProcessing(false);
+      
+      // Dismiss the loading toast and show error
+      toast.dismiss('upload-toast');
+      toast.error(`Upload failed: ${error.message}`);
     }
   });
   
@@ -381,11 +396,37 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
     });
   };
 
+  // Function to display detailed success message with TOIID
+  const displaySuccessWithTOIID = (toiId: string) => {
+    const successToast = () => (
+      <div>
+        <div className="flex items-center space-x-1 mb-1">
+          <span className="font-semibold">Image uploaded successfully!</span>
+          <button 
+            onClick={() => toast.dismiss('success-toast')}
+            className="ml-auto"
+          >
+            <XMarkIcon className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="text-sm flex items-center cursor-pointer">
+          <InformationCircleIcon className="h-4 w-4 mr-1" />
+          <span>ID: {toiId}</span>
+        </div>
+      </div>
+    );
+    
+    toast.custom(successToast, { id: 'success-toast', duration: 10000 });
+  };
+
   // Upload image to server using TRPC
   const uploadImageToServer = async (base64Image: string) => {
     try {
       const imgMD5Hash = calculateImageMD5(base64Image);
-      console.log(`Uploading image to dressing room for product ${product.id} with MD5 ${imgMD5Hash.substring(0, 8)}...`);
+      logger.info(`Uploading image to dressing room for product ${product.id} with MD5 ${imgMD5Hash.substring(0, 8)}...`);
+      
+      // Show loading toast that persists until success/error
+      toast.loading('Processing image - this may take a moment...', { id: 'upload-toast' });
       
       // Call the TRPC endpoint
       uploadToDressingRoom({
@@ -395,10 +436,12 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
       });
       
       // We're not awaiting the result since we want the UI to continue without waiting
-      console.log('Upload initiated in background');
+      logger.info('Upload initiated in background');
     } catch (error) {
-      console.error('Error initiating image upload:', error);
+      logger.error('Error initiating image upload:', error);
       setUploadError('Failed to start image processing. Please try again.');
+      toast.dismiss('upload-toast');
+      toast.error('Failed to start image processing. Please try again.');
     }
   };
   

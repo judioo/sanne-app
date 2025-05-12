@@ -4,6 +4,7 @@ import Providers from '@/app/providers'
 import { TRPCProvider } from './trpc-provider'
 import { Metadata } from 'next'
 import { setLogLevel } from '@/utils/logger'
+import ToastProvider from './components/ToastProvider'
 
 // Set log level based on environment
 if (typeof window !== 'undefined') {
@@ -46,6 +47,7 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable}`} suppressHydrationWarning>
         <ClientOnlyProvider>
+          <ToastProvider />
           {children}
         </ClientOnlyProvider>
       </body>
