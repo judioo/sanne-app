@@ -271,42 +271,38 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
       // First try to remove the previous image which is usually the largest item
       localStorage.removeItem('userDressingRoomImage');
       
-      // Calculate current localStorage usage
-      let totalSize = 0;
-      let items: {key: string, size: number}[] = [];
-      
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key) {
-          const value = localStorage.getItem(key) || '';
-          const size = (key.length + value.length) * 2; // Unicode characters take 2 bytes
-          totalSize += size;
-          items.push({ key, size });
-        }
-      }
-      
-      const usageInMB = totalSize / (1024 * 1024);
-      logger.info(`Current localStorage usage: ~${usageInMB.toFixed(2)}MB`);
+      // Calculate current localStorage usage after removing the previous image
+      const { items, usageInMB, totalSize, availableSpaceInMB } = calculateLocalStorageUsage();
+      logger.info(`Current localStorage usage after cleanup: ~${usageInMB.toFixed(2)}MB`);
+      logger.info(`Current localStorage total size: ~${totalSize.toFixed(2)}MB`);
+      logger.info(`Current localStorage available space: ~${availableSpaceInMB.toFixed(2)}MB`);
       
       // If still using more than 3MB, clean up more aggressively
       if (usageInMB > 3) {
-        logger.info('Storage usage high, cleaning up additional items');
+        logger.info('Storage usage high, performing targeted cleanup');
         
         // Sort items by size (largest first) and remove non-essential items
-        items.sort((a, b) => b.size - a.size);
+        const sortedItems = [...items].sort((a, b) => b.size - a.size);
         
         // Define essential keys that shouldn't be removed
         const essentialKeys = ['criticalAppSettings', 'userPreferences', 'tryOnItems'];
         
         // Remove largest non-essential items first
-        for (const item of items) {
+        let removedCount = 0;
+        for (const item of sortedItems) {
           if (!essentialKeys.includes(item.key)) {
             localStorage.removeItem(item.key);
             logger.info(`Removed item: ${item.key} (${(item.size/1024).toFixed(2)}KB)`);
-            // Break after removing a few items to avoid excessive cleanup
-            if (items.indexOf(item) >= 3) break;
+            removedCount++;
+            
+            // Break after removing a few large items
+            if (removedCount >= 3) break;
           }
         }
+        
+        // Log the updated storage usage after aggressive cleanup
+        const { usageInMB: updatedUsageInMB } = calculateLocalStorageUsage();
+        logger.info(`Updated localStorage usage after aggressive cleanup: ~${updatedUsageInMB.toFixed(2)}MB`);
       }
       
       return true;
@@ -316,11 +312,51 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
     }
   };
   
+  // Helper function to calculate localStorage usage and available space
+  const calculateLocalStorageUsage = () => {
+    let totalSize = 0;
+    let items: {key: string, size: number}[] = [];
+    
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key) {
+          const value = localStorage.getItem(key) || '';
+          const size = (key.length + value.length) * 2; // Unicode characters take ~2 bytes
+          totalSize += size;
+          items.push({ key, size });
+        }
+      }
+      
+      const usageInMB = totalSize / (1024 * 1024);
+      const totalSizeInMB = totalSize / (1024 * 1024); // Convert bytes to MB
+      const availableSpaceInMB = 4.5 - usageInMB; // Conservative 4.5MB limit (most browsers allow 5MB)
+      
+      return {
+        items,
+        usageInMB,
+        totalSize: totalSizeInMB,
+        availableSpaceInMB
+      };
+    } catch (error) {
+      logger.error('Error calculating localStorage usage:', error);
+      return {
+        items: [],
+        usageInMB: 0,
+        totalSize: 0,
+        availableSpaceInMB: 4.5 // Conservative fallback
+      };
+    }
+  };
+  
   // Process image file (blob or file) to base64
   const processImageFile = (fileOrBlob: Blob) => {
+    // Define the FileReader instance
     const reader = new FileReader();
     
+    // When file is loaded as data URL
     reader.onloadend = async () => {
+      // Get base64 string result
       const base64String = reader.result as string;
       
       try {
@@ -329,26 +365,68 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
         
         let optimizedImage = base64String;
         try {
-          // Create a function to convert to WebP
+          // Create a function to convert to WebP with enhanced compression
           const convertToWebP = (dataUrl: string): Promise<string> => {
             return new Promise((resolve, reject) => {
               const img = document.createElement('img');
               img.onload = () => {
+                // Calculate dimensions - resize if over 1200px in any dimension
+                const MAX_DIMENSION = 1200;
+                let width = img.width;
+                let height = img.height;
+                
+                // Maintain aspect ratio if resizing is needed
+                if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+                  if (width > height) {
+                    height = Math.round(height * (MAX_DIMENSION / width));
+                    width = MAX_DIMENSION;
+                  } else {
+                    width = Math.round(width * (MAX_DIMENSION / height));
+                    height = MAX_DIMENSION;
+                  }
+                  logger.info(`Resizing image from ${img.width}x${img.height} to ${width}x${height}`);
+                }
+                
                 const canvas = document.createElement('canvas');
-                canvas.width = img.width;
-                canvas.height = img.height;
+                canvas.width = width;
+                canvas.height = height;
                 const ctx = canvas.getContext('2d');
                 if (!ctx) {
                   reject(new Error('Could not get canvas context'));
                   return;
                 }
                 
-                ctx.drawImage(img, 0, 0);
-                try {
-                  const webpDataUrl = canvas.toDataURL('image/webp', 0.8);
+                // Use better quality settings for drawing to canvas
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                // Try multiple quality levels until we get a small enough image
+                const tryCompress = (quality: number): string | null => {
+                  try {
+                    return canvas.toDataURL('image/webp', quality);
+                  } catch (err) {
+                    logger.warn(`WebP compression at quality ${quality} failed:`, err);
+                    return null;
+                  }
+                };
+                
+                // Start with extremely low quality for maximum compression
+                let webpDataUrl = tryCompress(0.05);
+                
+                // If failed or still too large, try different quality levels
+                if (!webpDataUrl) {
+                  // Fallback to lower quality JPEG if WebP fails
+                  webpDataUrl = canvas.toDataURL('image/jpeg', 0.5);
+                  logger.info('Falling back to JPEG compression');
+                }
+                
+                // If we got a valid result, return it
+                if (webpDataUrl) {
                   resolve(webpDataUrl);
-                } catch (err) {
-                  // Fallback to original if WebP not supported
+                } else {
+                  // Last resort - return original but warn about it
+                  logger.warn('All compression attempts failed, using original');
                   resolve(dataUrl);
                 }
               };
@@ -359,10 +437,16 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
           
           // Convert to WebP for better compression
           optimizedImage = await convertToWebP(base64String);
-          const compressionRate = Math.round((1 - (optimizedImage.length / base64String.length)) * 100);
+          const originalSize = base64String.length;
+          const optimizedSize = optimizedImage.length;
+          const compressionRate = Math.round((1 - (optimizedSize / originalSize)) * 100);
           
           if (compressionRate > 0) {
-            logger.info(`WebP conversion reduced size by ${compressionRate}%`);
+            // Calculate sizes in MB for better readability in logs
+            const originalSizeMB = originalSize / (1024 * 1024);
+            const optimizedSizeMB = optimizedSize / (1024 * 1024);
+            
+            logger.info(`WebP conversion reduced size by ${compressionRate}% (${originalSizeMB.toFixed(2)}MB → ${optimizedSizeMB.toFixed(2)}MB)`);
             
             // Track the optimization in PostHog
             try {
@@ -370,8 +454,10 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
               posthog.capture('Image optimised', {
                 properties: {
                   compressionRate,
-                  originalSize: base64String.length,
-                  optimizedSize: optimizedImage.length
+                  originalSize,
+                  optimizedSize,
+                  originalSizeMB: originalSizeMB.toFixed(2),
+                  optimizedSizeMB: optimizedSizeMB.toFixed(2)
                 }
               });
             } catch (analyticsError) {
@@ -393,120 +479,88 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
         const imageSizeInMB = optimizedImage.length * 2 / (1024 * 1024); // Each character is ~2 bytes
         logger.info(`Optimized image size: ${imageSizeInMB.toFixed(2)}MB`);
         
-        // Variables to track storage metrics
-        let storageUsageInMB = 0;
-        let availableSpaceInMB = 0;
-        
-        // Estimate available localStorage space
-        try {
-          // Calculate current localStorage usage
-          let totalSize = 0;
-          for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key) {
-              const value = localStorage.getItem(key) || '';
-              totalSize += (key.length + value.length) * 2; // Unicode characters take ~2 bytes
-            }
-          }
-          
-          storageUsageInMB = totalSize / (1024 * 1024);
-          availableSpaceInMB = 4.5 - storageUsageInMB; // Assume 5MB limit with buffer
-          logger.info(`Estimated available localStorage space: ${availableSpaceInMB.toFixed(2)}MB`);
+        // Get current localStorage usage after cleanup
+        const { usageInMB, availableSpaceInMB } = calculateLocalStorageUsage();
+        logger.info(`Current localStorage usage: ${usageInMB.toFixed(2)}MB, available space: ${availableSpaceInMB.toFixed(2)}MB`);
           
           // If image is too large, don't attempt to store it
           if (imageSizeInMB > availableSpaceInMB) {
             logger.warn(`Image size (${imageSizeInMB.toFixed(2)}MB) exceeds available space (${availableSpaceInMB.toFixed(2)}MB)`); 
-            throw new Error(`Image too large for available storage: ${imageSizeInMB.toFixed(2)}MB > ${availableSpaceInMB.toFixed(2)}MB`);
-          }
-          
-          // Image should fit, attempt to store it
-          localStorage.setItem('userDressingRoomImage', optimizedImage);
-          setUploadedImage(optimizedImage);
-          setIsUploading(false);
-          toast.success('Image processed successfully');
-          
-          // Track successful storage
-          try {
-            const posthog = (await import('posthog-js')).default;
-            posthog.capture('Image_stored_in_localStorage', {
-              properties: {
-                imageSize: imageSizeInMB,
-                availableSpace: availableSpaceInMB,
-                storageUsage: storageUsageInMB
-              }
+            
+            // Continue with in-memory only approach
+            setUploadedImage(optimizedImage);
+            setIsUploading(false);
+            toast.success('Using optimised image as original is to large to store.', {
+              id: 'storage-limit-toast',
+              duration: 5000
             });
-          } catch (analyticsError) {
-            logger.error('Error tracking storage success:', analyticsError);
-          }
-        } catch (storageError) {
-          // Storage attempt failed - handle gracefully without retrying
-          logger.warn('Storage failed, proceeding with in-memory image only:', storageError);
-          
-          // Continue with the optimized image in memory
-          setUploadedImage(optimizedImage);
-          setIsUploading(false);
-          
-          // Show more specific error message based on the failure reason
-          const errorStr = String(storageError);
-          const isQuotaError = errorStr.includes('quota') || 
-                              errorStr.includes('QuotaExceededError');
-          
-          const errorMessage = isQuotaError ?
-            'Unable to save image locally as it exceeds browser storage limits. We will still process it.' :
-            'Unable to save image locally. We will still process it.';
-          
-          // Show user-friendly toast
-          toast.error(errorMessage, {
-            duration: 6000,
-          });
-          
-          // Track the exact error in PostHog with detailed diagnostics
-          try {
-            const posthog = (await import('posthog-js')).default;
-            posthog.capture('image_storage_failed', {
-              properties: {
-                imageSize: imageSizeInMB,
-                estimatedAvailableSpace: availableSpaceInMB,
-                fileSize: optimizedImage.length,
-                originalSize: base64String.length,
-                compressionAttempted: optimizedImage !== base64String,
-                compressionRate: optimizedImage !== base64String ? 
-                  Math.round((1 - (optimizedImage.length / base64String.length)) * 100) : 0,
-                productId: product.id,
-                isQuotaError: isQuotaError,
-                errorType: (storageError as Error)?.name || 'unknown',
-                errorMessage: String(storageError),
-                errorDetails: JSON.stringify(storageError)
-              }
-            });
-          } catch (analyticsError) {
-            logger.error('Error capturing storage failure analytics:', analyticsError);
-          }
-        }
-      } catch (storageError) {
-        logger.error('localStorage quota exceeded:', storageError);
-        setUploadedImage(base64String); // Still set the image in memory
-        setIsUploading(false);
-        
-        // Show user-friendly toast about storage limitations
-        toast.error('Unable to save image to browser storage. The image is too large, but we can still process it.', {
-          duration: 6000,
-        });
-        
-        // Track the error in PostHog
-        try {
-          const posthog = (await import('posthog-js')).default;
-          posthog.capture('localStorage_quota_exceeded', {
-            properties: {
-              fileSize: base64String.length,
-              productId: product.id,
-              errorMessage: JSON.stringify(storageError)
+
+            // create message giving image size, available space and usage
+            const message = `Image size: ${imageSizeInMB.toFixed(2)}MB, available space: ${availableSpaceInMB.toFixed(2)}MB, usage: ${usageInMB.toFixed(2)}MB`;
+            
+            // Track the too-large event
+            try {
+              const posthog = (await import('posthog-js')).default;
+              posthog.capture('Image_too_large_for_localStorage', {
+                properties: {
+                  message
+                }
+              });
+            } catch (analyticsError) {
+              logger.error('Error tracking storage size issue:', analyticsError);
             }
-          });
-        } catch (analyticsError) {
-          logger.error('Error capturing quota exceeded analytics:', analyticsError);
+          } else {
+            // Image should fit, attempt to store it
+            try {
+              localStorage.setItem('userDressingRoomImage', optimizedImage);
+              setUploadedImage(optimizedImage);
+              setIsUploading(false);
+              toast.success('Image processed and saved successfully');
+              
+              // Track successful storage
+              try {
+                // Create status message for analytics
+                const message = `Image size: ${imageSizeInMB.toFixed(2)}MB, available space: ${availableSpaceInMB.toFixed(2)}MB, usage: ${usageInMB.toFixed(2)}MB`;
+                
+                const posthog = (await import('posthog-js')).default;
+                posthog.capture('Image_stored_in_localStorage', {
+                  properties: {
+                    message
+                  }
+                });
+              } catch (analyticsError) {
+                logger.error('Error tracking storage success:', analyticsError);
+              }
+            } catch (storageError) {
+              // Handle storage error gracefully
+              logger.warn('Storage attempt failed:', storageError);
+              setUploadedImage(optimizedImage);
+              setIsUploading(false);
+              toast.error('Unable to save to browser storage. Image will be available for this session only.', { duration: 5000 });
+            }
+          }
+        } catch (generalError) {
+          // This is a fallback for any other errors in the optimization process
+          logger.error('Unexpected error during image processing:', generalError);
+          
+          // Continue with the original non-optimized image
+          setUploadedImage(base64String);
+          setIsUploading(false);
+          toast.error('Had trouble optimizing your image, but will still process it', { duration: 5000 });
+          
+          // Track this unexpected error
+          try {
+            const posthog = (await import('posthog-js')).default;
+            posthog.capture('Image_processing_unexpected_error', {
+              properties: {
+                errorMessage: String(generalError)
+              }
+            });
+          } catch (analyticError) {
+            // Silent fail for analytics
+          }
         }
-      }
+      // Note: Removed redundant catch block - errors are handled in inner try-catch blocks
     };
     
     reader.onerror = async () => {

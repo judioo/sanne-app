@@ -11,7 +11,7 @@ import GarmentIcon from "./components/GarmentIcon";
 import TryOnList from "./components/TryOnList";
 import { logger, setLogLevel } from "../utils/logger";
 
-setLogLevel('info');
+setLogLevel('debug');
 
 
 // Define type for product data from tRPC
