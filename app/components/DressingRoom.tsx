@@ -269,13 +269,38 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
   const processImageFile = (fileOrBlob: Blob) => {
     const reader = new FileReader();
     
-    reader.onloadend = () => {
+    reader.onloadend = async () => {
       const base64String = reader.result as string;
-      // Save to local storage
-      localStorage.setItem('userDressingRoomImage', base64String);
-      setUploadedImage(base64String);
-      setIsUploading(false);
-      toast.success('Image processed successfully');
+      // Save to local storage with error handling for quota exceeded
+      try {
+        localStorage.setItem('userDressingRoomImage', base64String);
+        setUploadedImage(base64String);
+        setIsUploading(false);
+        toast.success('Image processed successfully');
+      } catch (storageError) {
+        logger.error('localStorage quota exceeded:', storageError);
+        setUploadedImage(base64String); // Still set the image in memory
+        setIsUploading(false);
+        
+        // Show user-friendly toast about storage limitations
+        toast.error('Unable to save image to browser storage. The image is too large, but we can still process it.', {
+          duration: 6000,
+        });
+        
+        // Track the error in PostHog
+        try {
+          const posthog = (await import('posthog-js')).default;
+          posthog.capture('localStorage_quota_exceeded', {
+            properties: {
+              fileSize: base64String.length,
+              productId: product.id,
+              errorMessage: storageError instanceof Error ? storageError.message : 'Unknown storage error'
+            }
+          });
+        } catch (analyticsError) {
+          logger.error('Error capturing quota exceeded analytics:', analyticsError);
+        }
+      }
     };
     
     reader.onerror = async () => {
