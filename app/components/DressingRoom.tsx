@@ -45,7 +45,7 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
     
     // Set log level on client-side only
     import('@/utils/logger').then(({ setLogLevel }) => {
-      setLogLevel("debug");
+      setLogLevel("info");
     });
   }, []);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
@@ -1042,14 +1042,14 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
           <div className="absolute bottom-4 right-4 flex space-x-2">
             <div className="relative">
               <button 
-                onClick={hasTryOnItems ? undefined : triggerFileUpload}
-                onTouchStart={hasTryOnItems ? undefined : handlePhotoIconTouchStart}
-                onTouchEnd={hasTryOnItems ? undefined : handlePhotoIconTouchEnd}
-                onMouseDown={hasTryOnItems ? undefined : handlePhotoIconTouchStart}
-                onMouseUp={hasTryOnItems ? undefined : handlePhotoIconTouchEnd}
-                onMouseLeave={hasTryOnItems ? undefined : handlePhotoIconTouchEnd}
-                className={`p-3 ${hasTryOnItems ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#a1a561] cursor-pointer'} text-white rounded-full shadow-lg`}
-                disabled={hasTryOnItems}
+                onClick={(hasTryOnItems || isUploading || isProcessing) ? undefined : triggerFileUpload}
+                onTouchStart={(hasTryOnItems || isUploading || isProcessing) ? undefined : handlePhotoIconTouchStart}
+                onTouchEnd={(hasTryOnItems || isUploading || isProcessing) ? undefined : handlePhotoIconTouchEnd}
+                onMouseDown={(hasTryOnItems || isUploading || isProcessing) ? undefined : handlePhotoIconTouchStart}
+                onMouseUp={(hasTryOnItems || isUploading || isProcessing) ? undefined : handlePhotoIconTouchEnd}
+                onMouseLeave={(hasTryOnItems || isUploading || isProcessing) ? undefined : handlePhotoIconTouchEnd}
+                className={`p-3 ${(hasTryOnItems || isUploading || isProcessing) ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#a1a561] cursor-pointer'} text-white rounded-full shadow-lg`}
+                disabled={hasTryOnItems || isUploading || isProcessing}
               >
                 <CameraIcon className="h-6 w-6" />
               </button>
@@ -1071,8 +1071,9 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
                         : "See how this would look on you! Upload your photo for a more personalised experience."}
                     </p>
                     <button 
-                      onClick={triggerFileUpload}
-                      className="flex items-center justify-center w-full py-2 px-3 border border-white/30 rounded-md text-sm hover:bg-white/10 transition"
+                      onClick={(isUploading || isProcessing) ? undefined : triggerFileUpload}
+                      disabled={isUploading || isProcessing}
+                      className={`flex items-center justify-center w-full py-2 px-3 border border-white/30 rounded-md text-sm ${(isUploading || isProcessing) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/10 cursor-pointer'} transition`}
                     >
                       <ArrowUpTrayIcon className="h-4 w-4 mr-2" />
                       {uploadedImage ? "Change Photo" : "Upload Your Photo"}
@@ -1095,6 +1096,7 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
             onChange={handleFileSelect}
             accept="image/*"
             className="hidden"
+            disabled={isUploading || isProcessing}
           />
         </div>
         
