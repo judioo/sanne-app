@@ -702,14 +702,8 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
       setUploadError(null);
       
       // Update localStorage with the result
-      updateTryOnItemWithResults(result, variables.imgMD5);
-      
-      // Show success toast with TOIID if available
-      if (result.TOIID) {
-        displaySuccessWithTOIID(result.TOIID);
-      } else {
-        toast.success('Image uploaded successfully!');
-      }
+      updateTryOnItemWithResults(result, variables.imgMD5);     
+      toast.success('Image uploaded successfully!');
     },
     onError: async (error) => {
       logger.error('Error uploading image to dressing room:', error);
@@ -784,29 +778,6 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
           reject(error);
         });
     });
-  };
-
-  // Function to display detailed success message with TOIID
-  const displaySuccessWithTOIID = (toiId: string) => {
-    const successToast = () => (
-      <div>
-        <div className="flex items-center space-x-1 mb-1">
-          <span className="font-semibold">Image uploaded successfully!</span>
-          <button 
-            onClick={() => toast.dismiss('success-toast')}
-            className="ml-auto"
-          >
-            <XMarkIcon className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="text-sm flex items-center cursor-pointer">
-          <InformationCircleIcon className="h-4 w-4 mr-1" />
-          <span>ID: {toiId}</span>
-        </div>
-      </div>
-    );
-    
-    toast.custom(successToast, { id: 'success-toast', duration: 10000 });
   };
 
   // Upload image to server using TRPC
