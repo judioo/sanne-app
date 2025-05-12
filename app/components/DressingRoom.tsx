@@ -227,7 +227,7 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
               const posthog = (await import('posthog-js')).default;
               posthog.capture('HEIC conversion failed', {
                 properties: {
-                  error: conversionError
+                  error: JSON.stringify(conversionError)
                 }
               });
             } catch (analyticError) {
@@ -251,7 +251,7 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
           const posthog = (await import('posthog-js')).default;
           posthog.capture('Error handling file selection', {
             properties: {
-              error: error
+              error: JSON.stringify(error)
             }
           });
         } catch (analyticError) {
@@ -389,59 +389,98 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
         // Clean up localStorage before saving the new image
         cleanupLocalStorage();
         
+        // Check if the image will fit in localStorage before attempting to store it
+        const imageSizeInMB = optimizedImage.length * 2 / (1024 * 1024); // Each character is ~2 bytes
+        logger.info(`Optimized image size: ${imageSizeInMB.toFixed(2)}MB`);
+        
+        // Variables to track storage metrics
+        let storageUsageInMB = 0;
+        let availableSpaceInMB = 0;
+        
+        // Estimate available localStorage space
         try {
-          // Save to local storage with error handling for quota exceeded
+          // Calculate current localStorage usage
+          let totalSize = 0;
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key) {
+              const value = localStorage.getItem(key) || '';
+              totalSize += (key.length + value.length) * 2; // Unicode characters take ~2 bytes
+            }
+          }
+          
+          storageUsageInMB = totalSize / (1024 * 1024);
+          availableSpaceInMB = 4.5 - storageUsageInMB; // Assume 5MB limit with buffer
+          logger.info(`Estimated available localStorage space: ${availableSpaceInMB.toFixed(2)}MB`);
+          
+          // If image is too large, don't attempt to store it
+          if (imageSizeInMB > availableSpaceInMB) {
+            logger.warn(`Image size (${imageSizeInMB.toFixed(2)}MB) exceeds available space (${availableSpaceInMB.toFixed(2)}MB)`); 
+            throw new Error(`Image too large for available storage: ${imageSizeInMB.toFixed(2)}MB > ${availableSpaceInMB.toFixed(2)}MB`);
+          }
+          
+          // Image should fit, attempt to store it
           localStorage.setItem('userDressingRoomImage', optimizedImage);
           setUploadedImage(optimizedImage);
           setIsUploading(false);
           toast.success('Image processed successfully');
-        } catch (storageError) {
-          // First save attempt failed, try more aggressive cleanup
-          logger.warn('Initial save failed despite cleanup, attempting to clear all non-essential data');
           
-          // Clear everything except essential app data
-          for (let i = localStorage.length - 1; i >= 0; i--) {
-            const key = localStorage.key(i);
-            if (key && key !== 'tryOnItems' && key !== 'criticalAppSettings') {
-              localStorage.removeItem(key);
-            }
-          }
-          
-          // Try one more time
+          // Track successful storage
           try {
-            localStorage.setItem('userDressingRoomImage', optimizedImage);
-            setUploadedImage(optimizedImage);
-            setIsUploading(false);
-            toast.success('Image processed successfully');
-          } catch (finalError) {
-            // If still fails, proceed with the image in memory only
-            logger.error('localStorage quota exceeded even after aggressive cleanup:', finalError);
-            setUploadedImage(optimizedImage); // Still set the image in memory
-            setIsUploading(false);
-            
-            // Show user-friendly toast about storage limitations
-            toast.error('Unable to save image locally in your browser as its too large. However we will still process it.', {
-              duration: 6000,
+            const posthog = (await import('posthog-js')).default;
+            posthog.capture('Image_stored_in_localStorage', {
+              properties: {
+                imageSize: imageSizeInMB,
+                availableSpace: availableSpaceInMB,
+                storageUsage: storageUsageInMB
+              }
             });
-            
-            // Track the error in PostHog
-            try {
-              const posthog = (await import('posthog-js')).default;
-              posthog.capture('localStorage_quota_exceeded', {
-                properties: {
-                  fileSize: optimizedImage.length,
-                  originalSize: base64String.length,
-                  compressionAttempted: optimizedImage !== base64String,
-                  compressionRate: optimizedImage !== base64String ? 
-                    Math.round((1 - (optimizedImage.length / base64String.length)) * 100) : 0,
-                  productId: product.id,
-                  errorMessage: finalError instanceof Error ? finalError.message : 'Unknown storage error',
-                  afterAggressiveCleanup: true
-                }
-              });
-            } catch (analyticsError) {
-              logger.error('Error capturing quota exceeded analytics:', analyticsError);
-            }
+          } catch (analyticsError) {
+            logger.error('Error tracking storage success:', analyticsError);
+          }
+        } catch (storageError) {
+          // Storage attempt failed - handle gracefully without retrying
+          logger.warn('Storage failed, proceeding with in-memory image only:', storageError);
+          
+          // Continue with the optimized image in memory
+          setUploadedImage(optimizedImage);
+          setIsUploading(false);
+          
+          // Show more specific error message based on the failure reason
+          const errorStr = String(storageError);
+          const isQuotaError = errorStr.includes('quota') || 
+                              errorStr.includes('QuotaExceededError');
+          
+          const errorMessage = isQuotaError ?
+            'Unable to save image locally as it exceeds browser storage limits. We will still process it.' :
+            'Unable to save image locally. We will still process it.';
+          
+          // Show user-friendly toast
+          toast.error(errorMessage, {
+            duration: 6000,
+          });
+          
+          // Track the exact error in PostHog with detailed diagnostics
+          try {
+            const posthog = (await import('posthog-js')).default;
+            posthog.capture('image_storage_failed', {
+              properties: {
+                imageSize: imageSizeInMB,
+                estimatedAvailableSpace: availableSpaceInMB,
+                fileSize: optimizedImage.length,
+                originalSize: base64String.length,
+                compressionAttempted: optimizedImage !== base64String,
+                compressionRate: optimizedImage !== base64String ? 
+                  Math.round((1 - (optimizedImage.length / base64String.length)) * 100) : 0,
+                productId: product.id,
+                isQuotaError: isQuotaError,
+                errorType: (storageError as Error)?.name || 'unknown',
+                errorMessage: String(storageError),
+                errorDetails: JSON.stringify(storageError)
+              }
+            });
+          } catch (analyticsError) {
+            logger.error('Error capturing storage failure analytics:', analyticsError);
           }
         }
       } catch (storageError) {
@@ -461,7 +500,7 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
             properties: {
               fileSize: base64String.length,
               productId: product.id,
-              errorMessage: storageError instanceof Error ? storageError.message : 'Unknown storage error'
+              errorMessage: JSON.stringify(storageError)
             }
           });
         } catch (analyticsError) {
@@ -478,7 +517,7 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
         const posthog = (await import('posthog-js')).default;
         posthog.capture('Error reading file', {
           properties: {
-            error: reader.error
+            error: JSON.stringify(reader)
           }
         });
       } catch (analyticError) {
