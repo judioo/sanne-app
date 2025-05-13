@@ -1,6 +1,7 @@
 import { initTRPC, TRPCError } from '@trpc/server';
 import { z } from 'zod';
 import { Redis } from '@upstash/redis';
+import { logger } from '@/utils/logger';
 
 // Create Redis instance for rate limiting
 const rateLimitRedis = new Redis({
@@ -28,11 +29,19 @@ const rateLimit = t.middleware(async ({ ctx, next }) => {
   const headers = ctx.headers || {};
   const posthogId = headers['x-posthog-id'];
   
-  // If no posthog ID is provided, let the request through but log it
+  // If no posthog ID is provided, block the request
   if (!posthogId) {
-    console.warn('Rate limiting skipped: No PostHog ID provided');
-    return next();
+    logger.error('Rate limiting failed: No PostHog ID provided');
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: JSON.stringify({
+        error: 'Missing client identification',
+        details: 'Client identity required for this endpoint'
+      })
+    });
   }
+  
+  logger.info('Rate limiting for user:', posthogId);
   
   const cacheKey = `rate_limit:${posthogId}`;
   const now = Date.now();
@@ -43,6 +52,7 @@ const rateLimit = t.middleware(async ({ ctx, next }) => {
   
   // If no record exists or it's older than 5 minutes, create a fresh one
   if (!rateLimitData || (now - rateLimitData.lastUpdate > FIVE_MINUTES_MS)) {
+    logger.info('Rate limit reset for user:', posthogId);
     rateLimitData = {
       count: 1,
       lastUpdate: now,
@@ -54,6 +64,7 @@ const rateLimit = t.middleware(async ({ ctx, next }) => {
   
   // Check if user is currently embargoed
   if (rateLimitData.count > 5 && now < rateLimitData.embargoEndTime) {
+    logger.warn('Rate limit exceeded for user:', posthogId);
     throw new TRPCError({
       code: 'TOO_MANY_REQUESTS',
       message: JSON.stringify({
@@ -69,10 +80,12 @@ const rateLimit = t.middleware(async ({ ctx, next }) => {
   
   // If this request pushes them over the limit, set embargo time
   if (rateLimitData.count > 5) {
+    logger.warn('Rate limit exceeded for user:', posthogId);
     rateLimitData.embargoEndTime = now + FIVE_MINUTES_MS;
   }
   
   // Update Redis
+  logger.info('Updating rate limit for user:', posthogId);
   await rateLimitRedis.set(cacheKey, rateLimitData);
   
   return next();
