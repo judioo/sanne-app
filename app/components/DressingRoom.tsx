@@ -807,9 +807,57 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
     });
   };
 
+  // Check if PostHog ID is available
+  const checkPostHogID = async (): Promise<boolean> => {
+    try {
+      const posthog = (await import('posthog-js')).default;
+      const id = posthog.get_distinct_id();
+      
+      if (!id) {
+        logger.error('PostHog ID not available');
+        setUploadError('Dressing room is currently unavailable. Please try again later.');
+        toast.dismiss('upload-toast');
+        toast.error('Dressing room is currently unavailable. Please try again later.', {
+          duration: 5000,
+        });
+        
+        // Auto close after showing the error
+        setTimeout(() => {
+          onClose();
+        }, 6000);
+        
+        return false;
+      }
+      
+      logger.info(`PostHog ID available: ${id.substring(0, 8)}...`);
+      return true;
+    } catch (error) {
+      logger.error('Error checking PostHog ID:', error);
+      setUploadError('Dressing room is currently unavailable. Please try again later.');
+      toast.dismiss('upload-toast');
+      toast.error('Dressing room is currently unavailable. Please try again later.', {
+        duration: 5000,
+      });
+      
+      // Auto close after showing the error
+      setTimeout(() => {
+        onClose();
+      }, 6000);
+      
+      return false;
+    }
+  };
+  
   // Upload image to server using TRPC
   const uploadImageToServer = async (base64Image: string) => {
     try {
+      // First check if PostHog ID is available
+      const hasPostHogID = await checkPostHogID();
+      if (!hasPostHogID) {
+        setIsProcessing(false);
+        return;
+      }
+      
       const imgMD5Hash = calculateImageMD5(base64Image);
       logger.info(`Uploading image to dressing room for product ${product.id} with MD5 ${imgMD5Hash.substring(0, 8)}...`);
       
