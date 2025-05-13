@@ -2,67 +2,91 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { httpBatchLink } from '@trpc/client';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { trpc } from '../utils/trpc';
 import posthog from 'posthog-js';
+import { logger } from '@/utils/logger';
 
 export function TRPCProvider({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient());
-  const [posthogId, setPosthogId] = useState<string>('');
   
-  // Create a ref to hold the trpcClient
-  const trpcClientRef = useRef<ReturnType<typeof trpc.createClient> | null>(null);
-  
-  // Create a function to get or create the trpcClient
-  const getTrpcClient = useCallback(() => {
-    if (!trpcClientRef.current) {
-      trpcClientRef.current = trpc.createClient({
-        links: [
-          httpBatchLink({
-            url: '/api/trpc',
-            headers() {
-              return {
-                'x-posthog-id': posthogId || '',
-              };
-            },
-          }),
-        ],
-      });
-    }
-    return trpcClientRef.current;
-  }, [posthogId]);
-  
-  // Get PostHog ID on initial render
+  // Create a new client for every new posthogId
+  const [trpcClient, setTrpcClient] = useState<ReturnType<typeof trpc.createClient> | null>(null);
+
+  // Initialize PostHog and set up the tRPC client
   useEffect(() => {
-    // Make sure we're in the browser environment
-    if (typeof window !== 'undefined') {
-      // Initialize PostHog if needed - use a safer check
+    // Only run in browser
+    if (typeof window === 'undefined') return;
+
+    const initializeClient = () => {
       try {
-        // Try to get the distinct ID, which will work if PostHog is already initialized
-        const id = posthog.get_distinct_id();
-        console.log('PostHog ID retrieved:', id);
-        setPosthogId(id);
-      } catch (error) {
-        // If getting the ID fails, initialize PostHog
-        console.log('Initializing PostHog...');
-        posthog.init(
-          // Use the public PostHog key - or an environment variable if available
-          process.env.NEXT_PUBLIC_POSTHOG_KEY || 'phc_your_key_here', 
-          {
-            api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://app.posthog.com',
-            loaded: function(ph) {
-              const id = ph.get_distinct_id();
-              console.log('PostHog initialized with ID:', id);
-              setPosthogId(id);
+        // Try to get the current PostHog ID
+        const currentId = posthog.get_distinct_id();
+        
+        if (currentId) {
+          logger.info('Creating tRPC client with PostHog ID:', currentId);
+          
+          // Create a new client with the current PostHog ID
+          const client = trpc.createClient({
+            links: [
+              httpBatchLink({
+                url: '/api/trpc',
+                headers: () => {
+                  // Get the ID dynamically on each request
+                  const id = posthog.get_distinct_id();
+                  logger.info('Adding PostHog ID to request headers:', id);
+                  return {
+                    'x-posthog-id': id || ''
+                  };
+                },
+              }),
+            ],
+          });
+          
+          setTrpcClient(client);
+        } else {
+          logger.warn('PostHog ID not available yet, initializing PostHog');
+          
+          // Initialize PostHog if needed
+          posthog.init(
+            process.env.NEXT_PUBLIC_POSTHOG_KEY || 'phc_default_key',
+            {
+              api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://app.posthog.com',
+              loaded: function(ph) {
+                const newId = ph.get_distinct_id();
+                logger.info('PostHog initialized with ID:', newId);
+                
+                // Create client after PostHog is loaded
+                initializeClient();
+              }
             }
-          }
-        );
+          );
+        }
+      } catch (error) {
+        logger.error('Error initializing tRPC client:', error);
       }
-    }
+    };
+    
+    // Run initialization
+    initializeClient();
+    
+    // Add event listeners for PostHog ID changes
+    const handlePostHogIdChange = () => {
+      logger.info('PostHog ID changed, reinitializing tRPC client');
+      initializeClient();
+    };
+    
+    window.addEventListener('posthog-id-change', handlePostHogIdChange);
+    
+    return () => {
+      window.removeEventListener('posthog-id-change', handlePostHogIdChange);
+    };
   }, []);
-  
-  // Get the trpcClient based on the current posthogId
-  const trpcClient = getTrpcClient();
+
+  // Only render the provider once we have a client
+  if (!trpcClient) {
+    return <div className="hidden">Loading tRPC client...</div>;
+  }
 
   return (
     <trpc.Provider client={trpcClient} queryClient={queryClient}>
