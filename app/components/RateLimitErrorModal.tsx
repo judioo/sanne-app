@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { logger } from '@/utils/logger';
 
 interface RateLimitErrorModalProps {
@@ -14,6 +14,9 @@ interface RateLimitErrorModalProps {
 }
 
 export default function RateLimitErrorModal({ isOpen, onClose, rateLimitInfo }: RateLimitErrorModalProps) {
+  // Use a ref to track if the sound has been played
+  const soundPlayedRef = useRef(false);
+
   // Don't render if not open or no rate limit info
   if (!isOpen || !rateLimitInfo) return null;
 
@@ -22,12 +25,9 @@ export default function RateLimitErrorModal({ isOpen, onClose, rateLimitInfo }: 
   const timeRemaining = Math.max(0, rateLimitInfo.timestamp - now);
   const minutesRemaining = Math.ceil(timeRemaining / (60 * 1000));
   
-  // Play error sound when modal opens - moving useEffect before any conditional returns
-  // to avoid React hook rules violation
-  useEffect(() => {
-    // Only play sound if modal is open
-    if (!isOpen || typeof window === 'undefined') return;
-    
+  // Play sound effect - but only once, outside of React lifecycle
+  if (isOpen && !soundPlayedRef.current && typeof window !== 'undefined') {
+    soundPlayedRef.current = true;
     try {
       const audio = new Audio('/room-closed.mp3');
       audio.volume = 0.5; // Set volume to 50%
@@ -38,11 +38,7 @@ export default function RateLimitErrorModal({ isOpen, onClose, rateLimitInfo }: 
     } catch (e) {
       logger.error('Failed to play error sound:', e);
     }
-    // Clean up function
-    return () => {
-      // Any cleanup if needed
-    };
-  }, [isOpen]);
+  }
 
   return (
     <div 

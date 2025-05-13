@@ -1039,14 +1039,23 @@ const goToDressingRoom = () => {
   }, 500);
 };
 
-return (
-  <>
-    {/* Rate Limit Error Modal */}
+// For rate limit modal
+const renderRateLimitModal = () => {
+  if (!showRateLimitModal || !rateLimitInfo) return null;
+  
+  return (
     <RateLimitErrorModal 
-      isOpen={showRateLimitModal} 
+      isOpen={true} 
       onClose={() => setShowRateLimitModal(false)} 
       rateLimitInfo={rateLimitInfo} 
     />
+  );
+};
+
+return (
+  <>
+    {/* Rate Limit Error Modal - Rendered conditionally */}
+    {renderRateLimitModal()}
     
     <div className="fixed inset-0 bg-white z-50 flex flex-col">
       {/* Header */}
