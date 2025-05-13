@@ -291,12 +291,27 @@ export default function TryOnList({ onClose }: TryOnListProps) {
   }, [onClose]);
 
   // Navigate directly to dressing room
-  const navigateToDressingRoom = (productId: number) => {
+  const navigateToDressingRoom = async (item: TryOnItem) => {
+    // Track reveal moment when a completed item with image is clicked
+    if (item.status === TOI_STATUS.COMPLETED && item.imageUrl) {
+      try {
+        const posthog = (await import('posthog-js')).default;
+        posthog.capture('model_reveal_moment', {
+          productId: item.productId,
+          productName: item.productName,
+          itemUrl: item.imageUrl,
+          TOIID: item.TOIID
+        });
+      } catch (error) {
+        console.error('Error tracking model reveal event:', error);
+      }
+    }
+    
     // Store an indicator that we want to open the dressing room automatically
     sessionStorage.setItem('openDressingRoom', 'true');
     
     // Navigate to the product page
-    router.push(`/product/${productId}`);
+    router.push(`/product/${item.productId}`);
     onClose();
   };
 
@@ -407,7 +422,7 @@ export default function TryOnList({ onClose }: TryOnListProps) {
           <div 
             key={item.productId} 
             className="p-3 border-b last:border-b-0 hover:bg-gray-50 cursor-pointer"
-            onClick={() => navigateToDressingRoom(item.productId)}
+            onClick={() => navigateToDressingRoom(item)}
           >
             <div className="flex items-center space-x-3">
               {/* Small product avatar */}
