@@ -9,6 +9,9 @@ const rateLimitRedis = new Redis({
   token: process.env.KV_REST_API_TOKEN || '',
 });
 
+const MAX_REQUESTS = 5;
+const FIVE_MINUTES_MS = 5 * 60 * 1000;
+
 // Interface for rate limit record in Redis
 interface RateLimitRecord {
   count: number;
@@ -43,9 +46,8 @@ const rateLimit = t.middleware(async ({ ctx, next }) => {
   
   logger.info('Rate limiting for user:', posthogId);
   
-  const cacheKey = `rate_limit:${posthogId}`;
+  const cacheKey = `rl-${posthogId}`;
   const now = Date.now();
-  const FIVE_MINUTES_MS = 5 * 60 * 1000;
   
   // Get current rate limit data
   let rateLimitData: RateLimitRecord | null = await rateLimitRedis.get(cacheKey);
@@ -63,7 +65,7 @@ const rateLimit = t.middleware(async ({ ctx, next }) => {
   }
   
   // Check if user is currently embargoed
-  if (rateLimitData.count > 5 && now < rateLimitData.embargoEndTime) {
+  if (rateLimitData.count >= MAX_REQUESTS && now < rateLimitData.embargoEndTime) {
     logger.warn('Rate limit exceeded for user:', posthogId);
     throw new TRPCError({
       code: 'TOO_MANY_REQUESTS',
@@ -79,7 +81,7 @@ const rateLimit = t.middleware(async ({ ctx, next }) => {
   rateLimitData.lastUpdate = now;
   
   // If this request pushes them over the limit, set embargo time
-  if (rateLimitData.count > 5) {
+  if (rateLimitData.count >= MAX_REQUESTS) {
     logger.warn('Rate limit exceeded for user:', posthogId);
     rateLimitData.embargoEndTime = now + FIVE_MINUTES_MS;
   }
