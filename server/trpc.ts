@@ -24,7 +24,9 @@ export const t = initTRPC.context<{
 
 // Middleware for rate limiting
 const rateLimit = t.middleware(async ({ ctx, next }) => {
-  const posthogId = ctx.headers['x-posthog-id'];
+  // Safely access headers - they might be undefined in some contexts
+  const headers = ctx.headers || {};
+  const posthogId = headers['x-posthog-id'];
   
   // If no posthog ID is provided, let the request through but log it
   if (!posthogId) {
