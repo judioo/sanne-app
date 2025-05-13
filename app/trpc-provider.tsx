@@ -83,13 +83,18 @@ export function TRPCProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // Only render the provider once we have a client
-  if (!trpcClient) {
-    return <div className="hidden">Loading tRPC client...</div>;
-  }
+  // Always create a default client for SSR/initial render to avoid hydration issues
+  const client = trpcClient || trpc.createClient({
+    links: [
+      httpBatchLink({
+        url: '/api/trpc',
+        headers: () => ({}),
+      }),
+    ],
+  });
 
   return (
-    <trpc.Provider client={trpcClient} queryClient={queryClient}>
+    <trpc.Provider client={client} queryClient={queryClient}>
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     </trpc.Provider>
   );
