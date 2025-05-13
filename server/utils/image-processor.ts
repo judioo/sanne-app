@@ -159,13 +159,21 @@ export async function processImageWithAI(
       const frontFile = await toFile(frontImageBuffer, 'front.png', { type: 'image/png' }) as unknown as File;
       const backFile = await toFile(backImageBuffer, 'back.png', { type: 'image/png' }) as unknown as File;
       
-      const prompt = `Replace the model's outfit in the photo with a new one. 
+      const prompt = `
+      TASK: 
+      Replace the model's outfit in the photo with a new one. 
       Pay particular attention to the details of the dress (e.g., straps, flow, and hang). 
       I've provided back and front images of the garment so you know how it looks and flows. 
-      Make the design match as closely as possible. The model's face must match that of the person in the picture. 
+      I have added a product descripiton of the front and back to assist you in creating a more accurate image. 
+      
+      THE MODEL:
+      The model's face MUST match that of the person in the picture. 
       Pay particular attention to the eyes, mouth and nose. Get the facial details as close to the original as possible. 
       For female models of colour, do not make them fatter than the pictures are. make them look slimer but not skinny. 
-      Return a square image.`;
+
+      THE GARMENT:
+      Front Description: ${product.uploads[0].description}
+      Back Description: ${product.uploads[1].description}`;
 
       // Call OpenAI API with files
       console.log('Calling OpenAI API for image generation...');
