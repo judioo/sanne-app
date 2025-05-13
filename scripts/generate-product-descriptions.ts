@@ -14,11 +14,15 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// Type for enriched products
-type EnrichedUpload = {
+// Type for original product uploads
+type ProductUpload = {
   originalUrl: string;
   ufsUrl: string;
   key: string;
+};
+
+// Type for enriched products
+type EnrichedUpload = ProductUpload & {
   description?: string;
 };
 
@@ -125,6 +129,8 @@ async function generateBackViewDescription(imageUrl: string, frontDescription: s
 async function enrichProducts() {
   console.log("Starting to enrich products with descriptions...");
   const enrichedProducts: EnrichedProduct[] = [];
+  let formattedOutput = '';
+  const formattedFile = resolve(__dirname, '../etc/acquiring/data/product-descriptions-formatted.txt');
   
   // Create progress log file
   const logStream = createWriteStream('description-progress.log', { flags: 'a' });
@@ -200,34 +206,9 @@ async function enrichProducts() {
       uploads: enrichedUploads
     });
     
-    // Save progress after each product in case the script is interrupted
-    await writeFile(
-      resolve(__dirname, '../etc/acquiring/data/product-data.json'),
-      JSON.stringify(enrichedProducts, null, 2)
-    );
-    
-    logStream.write(`Completed product ${i + 1}/${products.length}: ${product.name}\n`);
-    console.log(`Completed product ${i + 1}/${products.length}`);
-  }
-  
-  logStream.end(`Finished process at ${new Date().toISOString()}\n`);
-  console.log("All descriptions generated successfully!");
-  
-  // Write JSON result to file
-  await writeFile(
-    resolve(__dirname, '../etc/acquiring/data/product-data.json'),
-    JSON.stringify(enrichedProducts, null, 2)
-  );
-  
-  console.log("Enriched product data saved to etc/acquiring/data/product-data.json");
-  
-  // Generate a human-readable formatted version
-  const formattedFile = resolve(__dirname, '../etc/acquiring/data/product-descriptions-formatted.txt');
-  let formattedOutput = '';
-  
-  enrichedProducts.forEach((product: EnrichedProduct, index: number) => {
+    // Update the formatted output for this product
     formattedOutput += `\n${'-'.repeat(80)}\n`;
-    formattedOutput += `Product ${index + 1}: ${product.name}\n`;
+    formattedOutput += `Product ${i + 1}: ${product.name}\n`;
     formattedOutput += `Price: ${product.price} | Category: ${product.category}\n`;
     formattedOutput += `Collections: ${product.collections.join(', ')}\n`;
     formattedOutput += `${'-'.repeat(80)}\n\n`;
@@ -236,8 +217,9 @@ async function enrichProducts() {
       formattedOutput += `FRONT VIEW DESCRIPTION:\n${'-'.repeat(20)}\n`;
       
       // Replace escape sequences with actual line breaks if description exists
-      if (product.uploads[0].description) {
-        const frontDescription = product.uploads[0].description.replace(/\\n/g, '\n');
+      const frontUpload = product.uploads[0] as EnrichedUpload;
+      if (frontUpload.description) {
+        const frontDescription = frontUpload.description.replace(/\\n/g, '\n');
         formattedOutput += `${frontDescription}\n\n`;
       } else {
         formattedOutput += `No description available\n\n`;
@@ -246,8 +228,9 @@ async function enrichProducts() {
       if (product.uploads.length > 1) {
         formattedOutput += `BACK VIEW DESCRIPTION:\n${'-'.repeat(20)}\n`;
         
-        if (product.uploads[1].description) {
-          const backDescription = product.uploads[1].description.replace(/\\n/g, '\n');
+        const backUpload = product.uploads[1] as EnrichedUpload;
+        if (backUpload.description) {
+          const backDescription = backUpload.description.replace(/\\n/g, '\n');
           formattedOutput += `${backDescription}\n\n`;
         } else {
           formattedOutput += `No description available\n\n`;
@@ -256,11 +239,30 @@ async function enrichProducts() {
     }
     
     formattedOutput += `${'-'.repeat(80)}\n\n`;
-  });
+    
+    // Save progress after each product in case the script is interrupted
+    await writeFile(
+      resolve(__dirname, '../etc/acquiring/data/product-data.json'),
+      JSON.stringify(enrichedProducts, null, 2)
+    );
+    
+    // Also update the formatted text file incrementally
+    await writeFile(formattedFile, formattedOutput);
+    
+    logStream.write(`Completed product ${i + 1}/${products.length}: ${product.name}\n`);
+    console.log(`Completed product ${i + 1}/${products.length}`);
+  }
   
-  // Write the formatted output
-  await writeFile(formattedFile, formattedOutput);
+  logStream.end(`Finished process at ${new Date().toISOString()}\n`);
+  console.log("All descriptions generated successfully!");
   
+  // Write final JSON result to file
+  await writeFile(
+    resolve(__dirname, '../etc/acquiring/data/product-data.json'),
+    JSON.stringify(enrichedProducts, null, 2)
+  );
+  
+  console.log("Enriched product data saved to etc/acquiring/data/product-data.json");
   console.log(`Human-readable descriptions saved to etc/acquiring/data/product-descriptions-formatted.txt`);
 }
 
