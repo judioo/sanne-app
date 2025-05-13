@@ -714,7 +714,7 @@ const calculateImageMD5 = (base64Image: string) => {
   return md5(base64Image);
 };
 
-// Set up TRPC mutation for image upload
+// Set up TRPC mutation for image upload with safer error handling
 const { mutateAsync: uploadToDressingRoom } = trpc.products.toDressingRoom.useMutation({
   onSuccess: async (result, variables) => {
     logger.info(`Successfully uploaded image with MD5 ${variables.imgMD5.substring(0, 8)} to dressing room:`, result);
@@ -764,36 +764,67 @@ const { mutateAsync: uploadToDressingRoom } = trpc.products.toDressingRoom.useMu
     // Remove the failed item from localStorage
     removeTryOnItem(product.id);
     
-    // Check if this is a rate limit error (429 Too Many Requests)
-    if (error.data?.code === 'TOO_MANY_REQUESTS') {
+    // Safely handle the error message
+    const handleError = () => {
       try {
-        // Parse the error message to get the embargo end time
-        const errorData = JSON.parse(error.message);
-        const embargoEndTime = new Date(errorData.embargoEndTime);
-        const formattedTime = embargoEndTime.toLocaleTimeString();
-        const formattedDate = embargoEndTime.toLocaleDateString();
-        
-        // Set more specific error for rate limiting
-        setUploadError(`Dressing rooms are currently at capacity. Please try again after ${formattedTime}.`);
-        
-        // Set rate limit info for the modal
-        setRateLimitInfo({
-          time: formattedTime,
-          date: formattedDate,
-          timestamp: embargoEndTime.getTime()
-        });
-        
-        // Show the rate limit error modal
-        setShowRateLimitModal(true);
-      } catch (parseError) {
-        // Fallback if we can't parse the embargo time
-        setUploadError('Dressing rooms are currently at capacity. Please try again in a few minutes.');
-        toast.error('Dressing rooms are currently at capacity. Please try again in a few minutes.');
+        // Check if this is a rate limit error (429 Too Many Requests)
+        if (error.data?.code === 'TOO_MANY_REQUESTS') {
+          try {
+            // Safely parse the error message
+            let embargoEndTime;
+            let errorData;
+            
+            try {
+              errorData = JSON.parse(error.message);
+              embargoEndTime = new Date(errorData.embargoEndTime);
+            } catch (parseError) {
+              // If we can't parse the specific error message format, create a fallback time
+              logger.error('Failed to parse rate limit embargo time:', parseError);
+              embargoEndTime = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes from now as fallback
+            }
+            
+            const formattedTime = embargoEndTime.toLocaleTimeString();
+            const formattedDate = embargoEndTime.toLocaleDateString();
+            
+            // Set more specific error for rate limiting
+            setUploadError(`Dressing rooms are currently at capacity. Please try again after ${formattedTime}.`);
+            
+            // Set rate limit info for the modal
+            setRateLimitInfo({
+              time: formattedTime,
+              date: formattedDate,
+              timestamp: embargoEndTime.getTime()
+            });
+            
+            // Show the rate limit error modal
+            setShowRateLimitModal(true);
+          } catch (nestedError) {
+            logger.error('Error handling rate limit:', nestedError);
+            // Fallback for any errors during the handling
+            setUploadError('Dressing rooms are currently at capacity. Please try again in a few minutes.');
+            toast.error('Dressing rooms are currently at capacity. Please try again in a few minutes.');
+          }
+        } else {
+          // Handle other types of errors
+          setUploadError('Failed to process image. Please try again.');
+          toast.error(`Upload failed: ${error.message || 'Unknown error'}`);
+        }
+      } catch (handlingError) {
+        // Ultimate fallback - if anything in the error handling itself fails
+        logger.error('Critical error in error handling:', handlingError);
+        setUploadError('An unexpected error occurred. Please try again later.');
+        toast.error('An unexpected error occurred. Please try again later.');
       }
-    } else {
-      // Handle other types of errors
-      setUploadError('Failed to process image. Please try again.');
-      toast.error(`Upload failed: ${error.message}`);
+    };
+    
+    // Execute the error handling in a try/catch to prevent any crashes
+    try {
+      handleError();
+    } catch (e) {
+      logger.error('Fatal error in error handling:', e);
+      // Last resort fallback
+      setUploadError('An unexpected error occurred. Please try again later.');
+      toast.error('An unexpected error occurred. Please try again later.');
     }
   }
 });
