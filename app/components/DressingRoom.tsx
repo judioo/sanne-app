@@ -713,18 +713,45 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
         const posthog = (await import('posthog-js')).default;
         posthog.capture('Error uploading image to dressing room', {
           properties: {
-            error: JSON.stringify(error)
+            error: JSON.stringify(error),
+            code: error.data?.code
           }
         });
       } catch (analyticError) {
         logger.error('Error capturing analytics:', analyticError);
       }
-      setUploadError('Failed to process image. Please try again.');
+      
+      // Dismiss the loading toast
+      toast.dismiss('upload-toast');
       setIsProcessing(false);
       
-      // Dismiss the loading toast and show error
-      toast.dismiss('upload-toast');
-      toast.error(`Upload failed: ${error.message}`);
+      // Check if this is a rate limit error (429 Too Many Requests)
+      if (error.data?.code === 'TOO_MANY_REQUESTS') {
+        try {
+          // Parse the error message to get the embargo end time
+          const errorData = JSON.parse(error.message);
+          const embargoEndTime = new Date(errorData.embargoEndTime);
+          const formattedTime = embargoEndTime.toLocaleTimeString();
+          const formattedDate = embargoEndTime.toLocaleDateString();
+          
+          // Set more specific error for rate limiting
+          setUploadError(`Dressing rooms are currently at capacity. Please try again after ${formattedTime}.`);
+          
+          // Show a more detailed toast with the time
+          toast.error(
+            `The dressing rooms are currently at capacity. Please try again after ${formattedTime} on ${formattedDate}.`, 
+            { duration: 10000 }
+          );
+        } catch (parseError) {
+          // Fallback if we can't parse the embargo time
+          setUploadError('Dressing rooms are currently at capacity. Please try again in a few minutes.');
+          toast.error('Dressing rooms are currently at capacity. Please try again in a few minutes.');
+        }
+      } else {
+        // Handle other types of errors
+        setUploadError('Failed to process image. Please try again.');
+        toast.error(`Upload failed: ${error.message}`);
+      }
     }
   });
   

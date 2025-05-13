@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { router, publicProcedure } from '../trpc';
+import { router, publicProcedure, rateLimitedProcedure } from '../trpc';
 import { products, getAllCollections } from '../product-data';
 import { UTApi } from 'uploadthing/server';
 import { processImageWithAI, base64ToUint8Array, resizeAndConvertToWebp } from '../utils/image-processor';
@@ -99,7 +99,7 @@ export const productsRouter = router({
     }),
     
   // To The Dressing Room - Virtual try-on functionality
-  toDressingRoom: publicProcedure
+  toDressingRoom: rateLimitedProcedure
     .input(z.object({
       image: z.string(), // base64 encoded image
       imgMD5: z.string(), // md5sum of image
