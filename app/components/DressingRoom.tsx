@@ -9,6 +9,7 @@ import md5 from 'md5';
 import { trpc } from '@/utils/trpc';
 import { TOIToDressingRoomStatusMapper, TOI_STATUS } from '@/server/utils/toi-constants';
 import toast from 'react-hot-toast';
+import RateLimitErrorModal from './RateLimitErrorModal';
 // PostHog will be initialized in useEffect to prevent SSR issues
 
 type DressingRoomProps = {
@@ -73,6 +74,7 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
       setLogLevel("info");
     });
   }, []);
+
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -87,6 +89,15 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
   const [hasReadyTryOns, setHasReadyTryOns] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [hasTryOnItems, setHasTryOnItems] = useState(false); // Track if there are existing try-on items
+  
+  // Rate limit error modal state
+  const [showRateLimitModal, setShowRateLimitModal] = useState(false);
+  const [rateLimitInfo, setRateLimitInfo] = useState<{
+    time: string;
+    date: string;
+    timestamp: number;
+  } | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   
@@ -507,374 +518,382 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
         // Get current localStorage usage after cleanup
         const { usageInMB, availableSpaceInMB } = calculateLocalStorageUsage();
         logger.info(`Current localStorage usage: ${usageInMB.toFixed(2)}MB, available space: ${availableSpaceInMB.toFixed(2)}MB`);
+        
+        // If image is too large, don't attempt to store it
+        if (imageSizeInMB > availableSpaceInMB) {
+          logger.warn(`Image size (${imageSizeInMB.toFixed(2)}MB) exceeds available space (${availableSpaceInMB.toFixed(2)}MB)`); 
           
-          // If image is too large, don't attempt to store it
-          if (imageSizeInMB > availableSpaceInMB) {
-            logger.warn(`Image size (${imageSizeInMB.toFixed(2)}MB) exceeds available space (${availableSpaceInMB.toFixed(2)}MB)`); 
-            
-            // Continue with in-memory only approach
+          // Continue with in-memory only approach
+          setUploadedImage(optimizedImage);
+          setIsUploading(false);
+          toast.success('Using optimised image as original is to large to store.', {
+            id: 'storage-limit-toast',
+            duration: 5000
+          });
+
+          // create message giving image size, available space and usage
+          const message = `Image size: ${imageSizeInMB.toFixed(2)}MB, available space: ${availableSpaceInMB.toFixed(2)}MB, usage: ${usageInMB.toFixed(2)}MB`;
+          
+          // Track the too-large event
+          try {
+            const posthog = (await import('posthog-js')).default;
+            posthog.capture('Image_too_large_for_localStorage', {
+              properties: {
+                message
+              }
+            });
+          } catch (analyticsError) {
+            logger.error('Error tracking storage size issue:', analyticsError);
+          }
+        } else {
+          // Image should fit, attempt to store it
+          try {
+            localStorage.setItem('userDressingRoomImage', optimizedImage);
             setUploadedImage(optimizedImage);
             setIsUploading(false);
-            toast.success('Using optimised image as original is to large to store.', {
-              id: 'storage-limit-toast',
-              duration: 5000
-            });
-
-            // create message giving image size, available space and usage
-            const message = `Image size: ${imageSizeInMB.toFixed(2)}MB, available space: ${availableSpaceInMB.toFixed(2)}MB, usage: ${usageInMB.toFixed(2)}MB`;
+            toast.success('Image processed and saved successfully');
             
-            // Track the too-large event
+            // Track successful storage
             try {
+              // Create status message for analytics
+              const message = `Image size: ${imageSizeInMB.toFixed(2)}MB, available space: ${availableSpaceInMB.toFixed(2)}MB, usage: ${usageInMB.toFixed(2)}MB`;
+              
               const posthog = (await import('posthog-js')).default;
-              posthog.capture('Image_too_large_for_localStorage', {
+              posthog.capture('Image_stored_in_localStorage', {
                 properties: {
                   message
                 }
               });
             } catch (analyticsError) {
-              logger.error('Error tracking storage size issue:', analyticsError);
+              logger.error('Error tracking storage success:', analyticsError);
             }
-          } else {
-            // Image should fit, attempt to store it
-            try {
-              localStorage.setItem('userDressingRoomImage', optimizedImage);
-              setUploadedImage(optimizedImage);
-              setIsUploading(false);
-              toast.success('Image processed and saved successfully');
-              
-              // Track successful storage
-              try {
-                // Create status message for analytics
-                const message = `Image size: ${imageSizeInMB.toFixed(2)}MB, available space: ${availableSpaceInMB.toFixed(2)}MB, usage: ${usageInMB.toFixed(2)}MB`;
-                
-                const posthog = (await import('posthog-js')).default;
-                posthog.capture('Image_stored_in_localStorage', {
-                  properties: {
-                    message
-                  }
-                });
-              } catch (analyticsError) {
-                logger.error('Error tracking storage success:', analyticsError);
-              }
-            } catch (storageError) {
-              // Handle storage error gracefully
-              logger.warn('Storage attempt failed:', storageError);
-              setUploadedImage(optimizedImage);
-              setIsUploading(false);
-              toast.error('Unable to save to browser storage. Image will be available for this session only.', { duration: 5000 });
-            }
-          }
-        } catch (generalError) {
-          // This is a fallback for any other errors in the optimization process
-          logger.error('Unexpected error during image processing:', generalError);
-          
-          // Continue with the original non-optimized image
-          setUploadedImage(base64String);
-          setIsUploading(false);
-          toast.error('Had trouble optimizing your image, but will still process it', { duration: 5000 });
-          
-          // Track this unexpected error
-          try {
-            const posthog = (await import('posthog-js')).default;
-            posthog.capture('Image_processing_unexpected_error', {
-              properties: {
-                errorMessage: String(generalError)
-              }
-            });
-          } catch (analyticError) {
-            // Silent fail for analytics
+          } catch (storageError) {
+            // Handle storage error gracefully
+            logger.warn('Storage attempt failed:', storageError);
+            setUploadedImage(optimizedImage);
+            setIsUploading(false);
+            toast.error('Unable to save to browser storage. Image will be available for this session only.', { duration: 5000 });
           }
         }
-      // Note: Removed redundant catch block - errors are handled in inner try-catch blocks
-    };
-    
-    reader.onerror = async () => {
-      logger.error('Error reading file:', reader.error);
-      
-      // Capture analytics
-      try {
-        const posthog = (await import('posthog-js')).default;
-        posthog.capture('Error reading file', {
-          properties: {
-            error: JSON.stringify(reader)
-          }
-        });
-      } catch (analyticError) {
-        logger.error('Error capturing analytics:', analyticError);
-      }
-      
-      setUploadError('Failed to read the image file.');
-      setIsUploading(false);
-      toast.error('Failed to read the image file. Please try again.');
-    };
-    
-    reader.readAsDataURL(fileOrBlob);
-  };
-
-  // Trigger file input click
-  const triggerFileUpload = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.click();
-    }
-  };
-
-  // Handle long press on photo icon
-  const handlePhotoIconTouchStart = () => {
-    // Clear any existing timeout
-    if (tooltipTimeout) {
-      clearTimeout(tooltipTimeout);
-      setTooltipTimeout(null);
-    }
-    
-    // Set a timeout to detect long press (500ms)
-    const timer = setTimeout(() => {
-      setShowTooltip(true);
-      
-      // Auto-hide tooltip after 7 seconds
-      const hideTimer = setTimeout(() => {
-        setShowTooltip(false);
-      }, 7000);
-      
-      setTooltipTimeout(hideTimer);
-    }, 500);
-    
-    setTooltipTimeout(timer);
-  };
-  
-  // Clear timeout if touch ends before long press threshold
-  const handlePhotoIconTouchEnd = () => {
-    if (tooltipTimeout) {
-      clearTimeout(tooltipTimeout);
-      setTooltipTimeout(null);
-    }
-  };
-
-  // Function to add try-on item to localStorage
-  const addTryOnItem = (): TryOnItem => {
-    // Create new try-on item
-    const newTryOnItem: TryOnItem = {
-      productId: product.id,
-      productName: product.name,
-      timestamp: new Date().toISOString(),
-      status: 'pending'
-    };
-    
-    // Add MD5 hash if we have an uploaded image
-    if (uploadedImage) {
-      newTryOnItem.imgMD5 = calculateImageMD5(uploadedImage);
-    }
-    
-    // Get existing try-on items from localStorage
-    let tryOnItems: TryOnItem[] = [];
-    const existingTryOnItems = localStorage.getItem('tryOnItems');
-    
-    if (existingTryOnItems) {
-      try {
-        tryOnItems = JSON.parse(existingTryOnItems);
+      } catch (generalError) {
+        // This is a fallback for any other errors in the optimization process
+        logger.error('Unexpected error during image processing:', generalError);
         
-        // Filter out old items (older than 24 hours)
-        const now = new Date();
-        tryOnItems = tryOnItems.filter(item => {
-          const timestamp = new Date(item.timestamp);
-          const hoursSinceCreated = (now.getTime() - timestamp.getTime()) / (1000 * 60 * 60);
-          return hoursSinceCreated < 24;
-        });
+        // Continue with the original non-optimized image
+        setUploadedImage(base64String);
+        setIsUploading(false);
+        toast.error('Had trouble optimizing your image, but will still process it', { duration: 5000 });
         
-        // Remove existing item for the same product if present
-        tryOnItems = tryOnItems.filter(item => item.productId !== product.id);
-      } catch (e) {
-        console.error('Error parsing tryOnItems:', e);
-        tryOnItems = [];
-      }
-    }
-    
-    // Add new item to the array
-    tryOnItems.push(newTryOnItem);
-    
-    // Save updated array back to localStorage
-    localStorage.setItem('tryOnItems', JSON.stringify(tryOnItems));
-    
-    // Return the new item for reference
-    return newTryOnItem;
-  };
-  
-  // Calculate MD5 hash of a base64 image
-  const calculateImageMD5 = (base64Image: string) => {
-    return md5(base64Image);
-  };
-  
-  // Set up TRPC mutation for image upload
-  const { mutateAsync: uploadToDressingRoom } = trpc.products.toDressingRoom.useMutation({
-    onSuccess: async (result, variables) => {
-      logger.info(`Successfully uploaded image with MD5 ${variables.imgMD5.substring(0, 8)} to dressing room:`, result);
-      
-      // Capture analytics
-      try {
-        const posthog = (await import('posthog-js')).default;
-        posthog.capture('Image uploaded to dressing room', {
-          properties: {
-            TOIID: result.TOIID,
-            imgMD5: variables.imgMD5,
-            productId: variables.productId
-          }
-        });
-      } catch (analyticError) {
-        logger.error('Error capturing analytics:', analyticError);
-      }
-      
-      // Dismiss loading toast
-      toast.dismiss('upload-toast');
-      setUploadError(null);
-      
-      // Update localStorage with the result
-      updateTryOnItemWithResults(result, variables.imgMD5);     
-      toast.success('Image uploaded successfully!');
-    },
-    onError: async (error) => {
-      logger.error('Error uploading image to dressing room:', error);
-      
-      // Capture analytics
-      try {
-        const posthog = (await import('posthog-js')).default;
-        posthog.capture('Error uploading image to dressing room', {
-          properties: {
-            error: JSON.stringify(error),
-            code: error.data?.code
-          }
-        });
-      } catch (analyticError) {
-        logger.error('Error capturing analytics:', analyticError);
-      }
-      
-      // Dismiss the loading toast
-      toast.dismiss('upload-toast');
-      setIsProcessing(false);
-      
-      // Check if this is a rate limit error (429 Too Many Requests)
-      if (error.data?.code === 'TOO_MANY_REQUESTS') {
+        // Track this unexpected error
         try {
-          // Parse the error message to get the embargo end time
-          const errorData = JSON.parse(error.message);
-          const embargoEndTime = new Date(errorData.embargoEndTime);
-          const formattedTime = embargoEndTime.toLocaleTimeString();
-          const formattedDate = embargoEndTime.toLocaleDateString();
-          
-          // Set more specific error for rate limiting
-          setUploadError(`Dressing rooms are currently at capacity. Please try again after ${formattedTime}.`);
-          
-          // Show a more detailed toast with the time
-          toast.error(
-            `The dressing rooms are currently at capacity. Please try again after ${formattedTime} on ${formattedDate}.`, 
-            { duration: 10000 }
-          );
-        } catch (parseError) {
-          // Fallback if we can't parse the embargo time
-          setUploadError('Dressing rooms are currently at capacity. Please try again in a few minutes.');
-          toast.error('Dressing rooms are currently at capacity. Please try again in a few minutes.');
+          const posthog = (await import('posthog-js')).default;
+          posthog.capture('Image_processing_unexpected_error', {
+            properties: {
+              errorMessage: String(generalError)
+            }
+          });
+        } catch (analyticError) {
+          // Silent fail for analytics
         }
-      } else {
-        // Handle other types of errors
-        setUploadError('Failed to process image. Please try again.');
-        toast.error(`Upload failed: ${error.message}`);
       }
-    }
-  });
-  
-  // Update localStorage with TRPC response
-  const updateTryOnItemWithResults = (result: { TOIID: string }, imgMD5Hash: string) => {
-    // Get existing try-on items
-    const existingItems = localStorage.getItem('tryOnItems');
-    if (existingItems) {
-      try {
-        const items: TryOnItem[] = JSON.parse(existingItems);
-        
-        // Find and update the specific item
-        const updatedItems = items.map(item => {
-          if (item.productId === product.id) {
-            return {
-              ...item,
-              TOIID: result.TOIID,
-              imgMD5: imgMD5Hash
-            };
-          }
-          return item;
-        });
-        
-        // Save updated items back to localStorage
-        localStorage.setItem('tryOnItems', JSON.stringify(updatedItems));
-      } catch (e) {
-        console.error('Error updating try-on items with server response:', e);
-      }
-    }
+    // Note: Removed redundant catch block - errors are handled in inner try-catch blocks
   };
   
-  // Load default image and convert to base64
-  const loadDefaultImage = () => {
-    return new Promise<string>((resolve, reject) => {
-      fetch('/lena.jpeg')
-        .then(response => response.blob())
-        .then(blob => {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const base64data = reader.result as string;
-            resolve(base64data);
-          };
-          reader.onerror = () => {
-            reject(new Error('Failed to read default image'));
-          };
-          reader.readAsDataURL(blob);
-        })
-        .catch(error => {
-          console.error('Error loading default image:', error);
-          setUploadError('Failed to load default image. Please try again.');
-          reject(error);
-        });
-    });
-  };
-
-  // Check if PostHog ID is available
-  const checkPostHogID = async (): Promise<boolean> => {
-    // First check if we've already verified PostHog is initialized
-    if (!isPostHogInitialized) {
-      logger.error('PostHog not initialized');
-      setUploadError('Dressing room is currently unavailable. Please refresh the page and try again.');
-      toast.dismiss('upload-toast');
-      toast.error('Dressing room is currently unavailable. Please refresh the page and try again.', {
-        duration: 5000,
-      });
-      
-      // Auto close after showing the error
-      setTimeout(() => {
-        onClose();
-      }, 6000);
-      
-      return false;
-    }
+  reader.onerror = async () => {
+    logger.error('Error reading file:', reader.error);
     
+    // Capture analytics
     try {
       const posthog = (await import('posthog-js')).default;
-      const id = posthog.get_distinct_id();
+      posthog.capture('Error reading file', {
+        properties: {
+          error: JSON.stringify(reader)
+        }
+      });
+    } catch (analyticError) {
+      logger.error('Error capturing analytics:', analyticError);
+    }
+    
+    setUploadError('Failed to read the image file.');
+    setIsUploading(false);
+    toast.error('Failed to read the image file. Please try again.');
+  };
+  
+  reader.readAsDataURL(fileOrBlob);
+};
+
+// Trigger file input click
+const triggerFileUpload = () => {
+  if (fileInputRef.current) {
+    fileInputRef.current.click();
+  }
+};
+
+// Handle long press on photo icon
+const handlePhotoIconTouchStart = () => {
+  // Clear any existing timeout
+  if (tooltipTimeout) {
+    clearTimeout(tooltipTimeout);
+    setTooltipTimeout(null);
+  }
+  
+  // Set a timeout to detect long press (500ms)
+  const timer = setTimeout(() => {
+    setShowTooltip(true);
+    
+    // Auto-hide tooltip after 7 seconds
+    const hideTimer = setTimeout(() => {
+      setShowTooltip(false);
+    }, 7000);
+    
+    setTooltipTimeout(hideTimer);
+  }, 500);
+  
+  setTooltipTimeout(timer);
+};
+
+// Clear timeout if touch ends before long press threshold
+const handlePhotoIconTouchEnd = () => {
+  if (tooltipTimeout) {
+    clearTimeout(tooltipTimeout);
+    setTooltipTimeout(null);
+  }
+};
+
+// Function to add try-on item to localStorage
+const addTryOnItem = (): TryOnItem => {
+  // Create new try-on item
+  const newTryOnItem: TryOnItem = {
+    productId: product.id,
+    productName: product.name,
+    timestamp: new Date().toISOString(),
+    status: 'pending'
+  };
+  
+  // Add MD5 hash if we have an uploaded image
+  if (uploadedImage) {
+    newTryOnItem.imgMD5 = calculateImageMD5(uploadedImage);
+  }
+  
+  // Get existing try-on items from localStorage
+  let tryOnItems: TryOnItem[] = [];
+  const existingTryOnItems = localStorage.getItem('tryOnItems');
+  
+  if (existingTryOnItems) {
+    try {
+      tryOnItems = JSON.parse(existingTryOnItems);
       
-      if (!id) {
-        logger.error('PostHog ID not available');
-        setUploadError('Dressing room is currently unavailable. Please try again later.');
-        toast.dismiss('upload-toast');
-        toast.error('Dressing room is currently unavailable. Please try again later.', {
-          duration: 5000,
+      // Filter out old items (older than 24 hours)
+      const now = new Date();
+      tryOnItems = tryOnItems.filter(item => {
+        const timestamp = new Date(item.timestamp);
+        const hoursSinceCreated = (now.getTime() - timestamp.getTime()) / (1000 * 60 * 60);
+        return hoursSinceCreated < 24;
+      });
+      
+      // Remove existing item for the same product if present
+      tryOnItems = tryOnItems.filter(item => item.productId !== product.id);
+    } catch (e) {
+      console.error('Error parsing tryOnItems:', e);
+      tryOnItems = [];
+    }
+  }
+  
+  // Add new item to the array
+  tryOnItems.push(newTryOnItem);
+  
+  // Save updated array back to localStorage
+  localStorage.setItem('tryOnItems', JSON.stringify(tryOnItems));
+  
+  // Return the new item for reference
+  return newTryOnItem;
+};
+
+// Calculate MD5 hash of a base64 image
+const calculateImageMD5 = (base64Image: string) => {
+  return md5(base64Image);
+};
+
+// Set up TRPC mutation for image upload
+const { mutateAsync: uploadToDressingRoom } = trpc.products.toDressingRoom.useMutation({
+  onSuccess: async (result, variables) => {
+    logger.info(`Successfully uploaded image with MD5 ${variables.imgMD5.substring(0, 8)} to dressing room:`, result);
+    
+    // Capture analytics
+    try {
+      const posthog = (await import('posthog-js')).default;
+      posthog.capture('Image uploaded to dressing room', {
+        properties: {
+          TOIID: result.TOIID,
+          imgMD5: variables.imgMD5,
+          productId: variables.productId
+        }
+      });
+    } catch (analyticError) {
+      logger.error('Error capturing analytics:', analyticError);
+    }
+    
+    // Dismiss loading toast
+    toast.dismiss('upload-toast');
+    setUploadError(null);
+    
+    // Update localStorage with the result
+    updateTryOnItemWithResults(result, variables.imgMD5);     
+    toast.success('Image uploaded successfully!');
+  },
+  onError: async (error) => {
+    logger.error('Error uploading image to dressing room:', error);
+    
+    // Capture analytics
+    try {
+      const posthog = (await import('posthog-js')).default;
+      posthog.capture('Error uploading image to dressing room', {
+        properties: {
+          error: JSON.stringify(error),
+          code: error.data?.code
+        }
+      });
+    } catch (analyticError) {
+      logger.error('Error capturing analytics:', analyticError);
+    }
+    
+    // Dismiss the loading toast
+    toast.dismiss('upload-toast');
+    setIsProcessing(false);
+    
+    // Remove the failed item from localStorage
+    removeTryOnItem(product.id);
+    
+    // Check if this is a rate limit error (429 Too Many Requests)
+    if (error.data?.code === 'TOO_MANY_REQUESTS') {
+      try {
+        // Parse the error message to get the embargo end time
+        const errorData = JSON.parse(error.message);
+        const embargoEndTime = new Date(errorData.embargoEndTime);
+        const formattedTime = embargoEndTime.toLocaleTimeString();
+        const formattedDate = embargoEndTime.toLocaleDateString();
+        
+        // Set more specific error for rate limiting
+        setUploadError(`Dressing rooms are currently at capacity. Please try again after ${formattedTime}.`);
+        
+        // Set rate limit info for the modal
+        setRateLimitInfo({
+          time: formattedTime,
+          date: formattedDate,
+          timestamp: embargoEndTime.getTime()
         });
         
-        // Auto close after showing the error
-        setTimeout(() => {
-          onClose();
-        }, 6000);
-        
-        return false;
+        // Show the rate limit error modal
+        setShowRateLimitModal(true);
+      } catch (parseError) {
+        // Fallback if we can't parse the embargo time
+        setUploadError('Dressing rooms are currently at capacity. Please try again in a few minutes.');
+        toast.error('Dressing rooms are currently at capacity. Please try again in a few minutes.');
       }
+    } else {
+      // Handle other types of errors
+      setUploadError('Failed to process image. Please try again.');
+      toast.error(`Upload failed: ${error.message}`);
+    }
+  }
+});
+
+// Update localStorage with TRPC response
+const updateTryOnItemWithResults = (result: { TOIID: string }, imgMD5Hash: string) => {
+  // Get existing try-on items
+  const existingItems = localStorage.getItem('tryOnItems');
+  if (existingItems) {
+    try {
+      const items: TryOnItem[] = JSON.parse(existingItems);
       
-      logger.info(`PostHog ID available: ${id.substring(0, 8)}...`);
-      return true;
-    } catch (error) {
-      logger.error('Error checking PostHog ID:', error);
+      // Find and update the specific item
+      const updatedItems = items.map(item => {
+        if (item.productId === product.id) {
+          return {
+            ...item,
+            TOIID: result.TOIID,
+            imgMD5: imgMD5Hash
+          };
+        }
+        return item;
+      });
+      
+      // Save updated items back to localStorage
+      localStorage.setItem('tryOnItems', JSON.stringify(updatedItems));
+    } catch (e) {
+      console.error('Error updating try-on items with server response:', e);
+    }
+  }
+};
+
+// Remove a failed try-on item from localStorage by product ID
+const removeTryOnItem = (productId: number) => {
+  const existingItems = localStorage.getItem('tryOnItems');
+  if (existingItems) {
+    try {
+      const items: TryOnItem[] = JSON.parse(existingItems);
+      
+      // Filter out the item with the specified product ID
+      const updatedItems = items.filter(item => item.productId !== productId);
+      
+      // Save the updated items back to localStorage
+      localStorage.setItem('tryOnItems', JSON.stringify(updatedItems));
+      logger.info(`Removed failed try-on item for product ${productId} from localStorage`);
+    } catch (e) {
+      logger.error('Error removing try-on item from localStorage:', e);
+    }
+  }
+};
+
+// Load default image and convert to base64
+const loadDefaultImage = () => {
+  return new Promise<string>((resolve, reject) => {
+    fetch('/lena.jpeg')
+      .then(response => response.blob())
+      .then(blob => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64data = reader.result as string;
+          resolve(base64data);
+        };
+        reader.onerror = () => {
+          reject(new Error('Failed to read default image'));
+        };
+        reader.readAsDataURL(blob);
+      })
+      .catch(error => {
+        console.error('Error loading default image:', error);
+        setUploadError('Failed to load default image. Please try again.');
+        reject(error);
+      });
+  });
+};
+
+// Check if PostHog ID is available
+const checkPostHogID = async (): Promise<boolean> => {
+  // First check if we've already verified PostHog is initialized
+  if (!isPostHogInitialized) {
+    logger.error('PostHog not initialized');
+    setUploadError('Dressing room is currently unavailable. Please refresh the page and try again.');
+    toast.dismiss('upload-toast');
+    toast.error('Dressing room is currently unavailable. Please refresh the page and try again.', {
+      duration: 5000,
+    });
+    
+    // Auto close after showing the error
+    setTimeout(() => {
+      onClose();
+    }, 6000);
+    
+    return false;
+  }
+  
+  try {
+    const posthog = (await import('posthog-js')).default;
+    const id = posthog.get_distinct_id();
+    
+    if (!id) {
+      logger.error('PostHog ID not available');
       setUploadError('Dressing room is currently unavailable. Please try again later.');
       toast.dismiss('upload-toast');
       toast.error('Dressing room is currently unavailable. Please try again later.', {
@@ -888,74 +907,122 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
       
       return false;
     }
-  };
-  
-  // Upload image to server using TRPC
-  const uploadImageToServer = async (base64Image: string) => {
-    try {
-      // First check if PostHog ID is available
-      const hasPostHogID = await checkPostHogID();
-      if (!hasPostHogID) {
-        setIsProcessing(false);
-        return;
-      }
-      
-      const imgMD5Hash = calculateImageMD5(base64Image);
-      logger.info(`Uploading image to dressing room for product ${product.id} with MD5 ${imgMD5Hash.substring(0, 8)}...`);
-      
-      // Show loading toast that persists until success/error
-      toast.loading('Processing image - this may take a moment...', { id: 'upload-toast' });
-      const posthog = (await import('posthog-js')).default;
-      posthog.capture('Calling uploadToDressingRoom', {
-        properties: {
-          productId: product.id,
-          imgMD5: `${imgMD5Hash.substring(0, 8)}`
-        }
-      });
-      
-      // Call the TRPC endpoint
-      uploadToDressingRoom({
-        image: base64Image,
-        imgMD5: imgMD5Hash,
-        productId: product.id
-      });
-      
-      // We're not awaiting the result since we want the UI to continue without waiting
-      logger.info('Upload initiated in background');
-    } catch (error) {
-      logger.error('Error initiating image upload:', error);
-      setUploadError('Failed to start image processing. Please try again.');
-      toast.dismiss('upload-toast');
-      toast.error('Failed to start image processing. Please try again.');
-    }
-  };
-  
-  // Process image upload - use uploaded image or default
-  const processImageUpload = async () => {
-    // Note: isProcessing is now set in goToDressingRoom before this function is called
-    if (uploadedImage) {
-      uploadImageToServer(uploadedImage);
-    } else {
-      try {
-        const defaultImage = await loadDefaultImage();
-        uploadImageToServer(defaultImage);
-      } catch (error) {
-        console.error('Error processing default image:', error);
-        setIsProcessing(false);
-      }
-    }
-  };
-
-  const SHOW_MESSAGE_DURATION = 6000;
-  // Go to dressing room with animation - updated to include image upload
-  const goToDressingRoom = () => {
-    // Set processing state immediately to prevent multiple clicks
-    setIsProcessing(true);
     
-    // If curtains are already closed (for existing try-on), just add the item and close
-    if (startWithClosedCurtains) {
-      // Add try-on item to localStorage
-      addTryOnItem();
+    logger.info(`PostHog ID available: ${id.substring(0, 8)}...`);
+    return true;
+  } catch (error) {
+    logger.error('Error checking PostHog ID:', error);
+    setUploadError('Dressing room is currently unavailable. Please try again later.');
+    toast.dismiss('upload-toast');
+    toast.error('Dressing room is currently unavailable. Please try again later.', {
+      duration: 5000,
+    });
+    
+    // Auto close after showing the error
+    setTimeout(() => {
+      onClose();
+    }, 6000);
+    
+    return false;
+  }
+};
+
+// Upload image to server using TRPC
+const uploadImageToServer = async (base64Image: string) => {
+  try {
+    // First check if PostHog ID is available
+    const hasPostHogID = await checkPostHogID();
+    if (!hasPostHogID) {
+      setIsProcessing(false);
+      return;
+    }
+    
+    const imgMD5Hash = calculateImageMD5(base64Image);
+    logger.info(`Uploading image to dressing room for product ${product.id} with MD5 ${imgMD5Hash.substring(0, 8)}...`);
+    
+    // Show loading toast that persists until success/error
+    toast.loading('Processing image - this may take a moment...', { id: 'upload-toast' });
+    const posthog = (await import('posthog-js')).default;
+    posthog.capture('Calling uploadToDressingRoom', {
+      properties: {
+        productId: product.id,
+        imgMD5: `${imgMD5Hash.substring(0, 8)}`
+      }
+    });
+    
+    // Call the TRPC endpoint
+    uploadToDressingRoom({
+      image: base64Image,
+      imgMD5: imgMD5Hash,
+      productId: product.id
+    });
+    
+    // We're not awaiting the result since we want the UI to continue without waiting
+    logger.info('Upload initiated in background');
+  } catch (error) {
+    logger.error('Error initiating image upload:', error);
+    setUploadError('Failed to start image processing. Please try again.');
+    toast.dismiss('upload-toast');
+    toast.error('Failed to start image processing. Please try again.');
+  }
+};
+
+// Process image upload - use uploaded image or default
+const processImageUpload = async () => {
+  // Note: isProcessing is now set in goToDressingRoom before this function is called
+  if (uploadedImage) {
+    uploadImageToServer(uploadedImage);
+  } else {
+    try {
+      const defaultImage = await loadDefaultImage();
+      uploadImageToServer(defaultImage);
+    } catch (error) {
+      console.error('Error processing default image:', error);
+      setIsProcessing(false);
+    }
+  }
+};
+
+const SHOW_MESSAGE_DURATION = 6000;
+// Go to dressing room with animation - updated to include image upload
+const goToDressingRoom = () => {
+  // Set processing state immediately to prevent multiple clicks
+  setIsProcessing(true);
+  
+  // If curtains are already closed (for existing try-on), just add the item and close
+  if (startWithClosedCurtains) {
+    // Add try-on item to localStorage
+    addTryOnItem();
+    
+    // Process image upload (uses default if none uploaded)
+    processImageUpload();
+    
+    // Auto close after a few seconds
+    setTimeout(() => {
+      // Close both the dressing room and product card by navigating back to the main page
+      onClose();
+      
+      // Go back to main page after showing the message
+      window.history.back();
+    }, SHOW_MESSAGE_DURATION);
+    return;
+  }
+  
+  // Normal flow for new try-on request
+  // Show curtains in initial open state
+  setShowCurtains(true);
+  setCurtainsClosed(false);
+  
+  // After a small delay, close the curtains
+  setTimeout(() => {
+    setCurtainsClosed(true);
+    
+    // After curtains close, show the message
+    setTimeout(() => {
+      setShowMessage(true);
+      
+      // Add try-on item to localStorage and get reference to it
+      const newTryOnItem = addTryOnItem();
       
       // Process image upload (uses default if none uploaded)
       processImageUpload();
@@ -968,41 +1035,19 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
         // Go back to main page after showing the message
         window.history.back();
       }, SHOW_MESSAGE_DURATION);
-      return;
-    }
-    
-    // Normal flow for new try-on request
-    // Show curtains in initial open state
-    setShowCurtains(true);
-    setCurtainsClosed(false);
-    
-    // After a small delay, close the curtains
-    setTimeout(() => {
-      setCurtainsClosed(true);
-      
-      // After curtains close, show the message
-      setTimeout(() => {
-        setShowMessage(true);
-        
-        // Add try-on item to localStorage and get reference to it
-        const newTryOnItem = addTryOnItem();
-        
-        // Process image upload (uses default if none uploaded)
-        processImageUpload();
-        
-        // Auto close after a few seconds
-        setTimeout(() => {
-          // Close both the dressing room and product card by navigating back to the main page
-          onClose();
-          
-          // Go back to main page after showing the message
-          window.history.back();
-        }, SHOW_MESSAGE_DURATION);
-      }, 1000);
-    }, 500);
-  };
+    }, 1000);
+  }, 500);
+};
 
-  return (
+return (
+  <>
+    {/* Rate Limit Error Modal */}
+    <RateLimitErrorModal 
+      isOpen={showRateLimitModal} 
+      onClose={() => setShowRateLimitModal(false)} 
+      rateLimitInfo={rateLimitInfo} 
+    />
+    
     <div className="fixed inset-0 bg-white z-50 flex flex-col">
       {/* Header */}
       <div className="relative py-4 px-6 border-b">
@@ -1220,5 +1265,6 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
         </div>
       </div>
     </div>
+    </>
   );
 }
