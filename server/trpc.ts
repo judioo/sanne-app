@@ -2,12 +2,19 @@ import { initTRPC, TRPCError } from '@trpc/server';
 import { z } from 'zod';
 import { Redis } from '@upstash/redis';
 import { logger } from '@/utils/logger';
+import { PostHog } from 'posthog-node';
 
 // Create Redis instance for rate limiting
 const rateLimitRedis = new Redis({
   url: process.env.KV_REST_API_URL || '',
   token: process.env.KV_REST_API_TOKEN || '',
 });
+
+// Initialize PostHog for server-side tracking
+const posthog = new PostHog(
+  process.env.NEXT_PUBLIC_POSTHOG_KEY || '',
+  { host: process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://app.posthog.com' }
+);
 
 const MAX_REQUESTS = 5;
 const FIVE_MINUTES_MS = 5 * 60 * 1000;
@@ -67,6 +74,19 @@ const rateLimit = t.middleware(async ({ ctx, next }) => {
   // Check if user is currently embargoed
   if (rateLimitData.count >= MAX_REQUESTS && now < rateLimitData.embargoEndTime) {
     logger.warn('Rate limit exceeded for user:', posthogId);
+    
+    // Track the embargo hit event in PostHog
+    posthog.capture({
+      distinctId: posthogId,
+      event: 'Rate_Limit_Embargo_Hit',
+      properties: {
+        count: rateLimitData.count,
+        embargoEndTime: rateLimitData.embargoEndTime,
+        remainingTime: rateLimitData.embargoEndTime - now,
+        requestTimestamp: now
+      }
+    });
+    
     throw new TRPCError({
       code: 'TOO_MANY_REQUESTS',
       message: JSON.stringify({
@@ -84,6 +104,18 @@ const rateLimit = t.middleware(async ({ ctx, next }) => {
   if (rateLimitData.count >= MAX_REQUESTS) {
     logger.warn('Rate limit exceeded for user:', posthogId);
     rateLimitData.embargoEndTime = now + FIVE_MINUTES_MS;
+    
+    // Track the new embargo creation in PostHog
+    posthog.capture({
+      distinctId: posthogId,
+      event: 'Rate_Limit_Embargo_Set',
+      properties: {
+        count: rateLimitData.count,
+        embargoEndTime: rateLimitData.embargoEndTime,
+        embargoLength: FIVE_MINUTES_MS,
+        requestTimestamp: now
+      }
+    });
   }
   
   // Update Redis
