@@ -32,14 +32,39 @@ type TryOnItem = {
 };
 
 export default function DressingRoom({ product, onClose, startWithClosedCurtains = false }: DressingRoomProps) {
+  // Track whether PostHog is initialized
+  const [isPostHogInitialized, setIsPostHogInitialized] = useState<boolean>(false);
+
   // Initialize client-side libraries in useEffect
   useEffect(() => {
     // Import and initialize PostHog
     import('posthog-js').then((module) => {
       const posthog = module.default;
-      // Initialize PostHog if needed
+      
+      // Initialize PostHog on client-side
       if (typeof window !== 'undefined') {
-        // PostHog init logic here if needed
+        try {
+          // Check if already initialized
+          const currentId = posthog.get_distinct_id();
+          
+          if (currentId) {
+            logger.info('PostHog already initialized with ID:', currentId);
+            setIsPostHogInitialized(true);
+          } else {
+            // Initialize PostHog with public key
+            posthog.init(
+              process.env.NEXT_PUBLIC_POSTHOG_KEY || 'phc_default_key', {
+              api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://app.posthog.com',
+              loaded: function(ph) {
+                const id = ph.get_distinct_id();
+                logger.info('PostHog initialized with ID:', id);
+                setIsPostHogInitialized(true);
+              }
+            });
+          }
+        } catch (error) {
+          logger.error('Error initializing PostHog:', error);
+        }
       }
     });
     
@@ -809,6 +834,23 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
 
   // Check if PostHog ID is available
   const checkPostHogID = async (): Promise<boolean> => {
+    // First check if we've already verified PostHog is initialized
+    if (!isPostHogInitialized) {
+      logger.error('PostHog not initialized');
+      setUploadError('Dressing room is currently unavailable. Please refresh the page and try again.');
+      toast.dismiss('upload-toast');
+      toast.error('Dressing room is currently unavailable. Please refresh the page and try again.', {
+        duration: 5000,
+      });
+      
+      // Auto close after showing the error
+      setTimeout(() => {
+        onClose();
+      }, 6000);
+      
+      return false;
+    }
+    
     try {
       const posthog = (await import('posthog-js')).default;
       const id = posthog.get_distinct_id();
@@ -1088,14 +1130,15 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
           <div className="absolute bottom-4 right-4 flex space-x-2">
             <div className="relative">
               <button 
-                onClick={(hasTryOnItems || isUploading || isProcessing) ? undefined : triggerFileUpload}
-                onTouchStart={(hasTryOnItems || isUploading || isProcessing) ? undefined : handlePhotoIconTouchStart}
-                onTouchEnd={(hasTryOnItems || isUploading || isProcessing) ? undefined : handlePhotoIconTouchEnd}
-                onMouseDown={(hasTryOnItems || isUploading || isProcessing) ? undefined : handlePhotoIconTouchStart}
-                onMouseUp={(hasTryOnItems || isUploading || isProcessing) ? undefined : handlePhotoIconTouchEnd}
-                onMouseLeave={(hasTryOnItems || isUploading || isProcessing) ? undefined : handlePhotoIconTouchEnd}
-                className={`p-3 ${(hasTryOnItems || isUploading || isProcessing) ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#a1a561] cursor-pointer'} text-white rounded-full shadow-lg`}
-                disabled={hasTryOnItems || isUploading || isProcessing}
+                onClick={(hasTryOnItems || isUploading || isProcessing || !isPostHogInitialized) ? undefined : triggerFileUpload}
+                onTouchStart={(hasTryOnItems || isUploading || isProcessing || !isPostHogInitialized) ? undefined : handlePhotoIconTouchStart}
+                onTouchEnd={(hasTryOnItems || isUploading || isProcessing || !isPostHogInitialized) ? undefined : handlePhotoIconTouchEnd}
+                onMouseDown={(hasTryOnItems || isUploading || isProcessing || !isPostHogInitialized) ? undefined : handlePhotoIconTouchStart}
+                onMouseUp={(hasTryOnItems || isUploading || isProcessing || !isPostHogInitialized) ? undefined : handlePhotoIconTouchEnd}
+                onMouseLeave={(hasTryOnItems || isUploading || isProcessing || !isPostHogInitialized) ? undefined : handlePhotoIconTouchEnd}
+                className={`p-3 ${(hasTryOnItems || isUploading || isProcessing || !isPostHogInitialized) ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#a1a561] cursor-pointer'} text-white rounded-full shadow-lg`}
+                disabled={hasTryOnItems || isUploading || isProcessing || !isPostHogInitialized}
+                title={!isPostHogInitialized ? "Dressing room is initializing, please wait..." : ""} 
               >
                 <CameraIcon className="h-6 w-6" />
               </button>
@@ -1117,9 +1160,10 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
                         : "See how this would look on you! Upload your photo for a more personalised experience."}
                     </p>
                     <button 
-                      onClick={(isUploading || isProcessing) ? undefined : triggerFileUpload}
-                      disabled={isUploading || isProcessing}
-                      className={`flex items-center justify-center w-full py-2 px-3 border border-white/30 rounded-md text-sm ${(isUploading || isProcessing) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/10 cursor-pointer'} transition`}
+                      onClick={(isUploading || isProcessing || !isPostHogInitialized) ? undefined : triggerFileUpload}
+                      disabled={isUploading || isProcessing || !isPostHogInitialized}
+                      className={`flex items-center justify-center w-full py-2 px-3 border border-white/30 rounded-md text-sm ${(isUploading || isProcessing || !isPostHogInitialized) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/10 cursor-pointer'} transition`}
+                      title={!isPostHogInitialized ? "Dressing room is initializing, please wait..." : "Upload a photo"}
                     >
                       <ArrowUpTrayIcon className="h-4 w-4 mr-2" />
                       {uploadedImage ? "Change Photo" : "Upload Your Photo"}
@@ -1149,9 +1193,10 @@ export default function DressingRoom({ product, onClose, startWithClosedCurtains
         {/* Dressing room button - Make sure it's not obscured */}
         <div className="mb-10">
           <button 
-            onClick={hasTryOnItems || isProcessing ? undefined : goToDressingRoom}
-            disabled={hasTryOnItems || isProcessing}
-            className={`w-full py-4 ${hasTryOnItems || isProcessing ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#a1a561] cursor-pointer'} text-white rounded-md font-medium relative overflow-hidden group`}
+            onClick={hasTryOnItems || isProcessing || !isPostHogInitialized ? undefined : goToDressingRoom}
+            disabled={hasTryOnItems || isProcessing || !isPostHogInitialized}
+            className={`w-full py-4 ${hasTryOnItems || isProcessing || !isPostHogInitialized ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#a1a561] cursor-pointer'} text-white rounded-md font-medium relative overflow-hidden group`}
+            title={!isPostHogInitialized ? "Dressing room is initializing, please wait..." : "Try this item on"}
           >
             <span className="relative z-10">To The Dressing Room</span>
             <div className="absolute inset-0 bg-gradient-to-r from-[#b1b571] to-[#91954f] 
