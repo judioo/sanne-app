@@ -11,6 +11,7 @@
     "redis": "ts-node bin/redis-cli.ts",
     "check-dressing-room": "pnpx tsx bin/check-dressing-room.ts",
     "inngest:server": "pnpm dlx inngest-cli@latest dev",
+    "generate-descriptions": "pnpx tsx scripts/generate-product-descriptions.ts",
     "test": "vitest run"
   },
   "dependencies": {
