@@ -26,7 +26,7 @@ export default function RateLimitErrorModal({ isOpen, onClose, rateLimitInfo }: 
   useEffect(() => {
     if (isOpen && typeof window !== 'undefined') {
       try {
-        const audio = new Audio('/public/room-closed.mp3');
+        const audio = new Audio('/room-closed.mp3');
         audio.volume = 0.5; // Set volume to 50%
         audio.play().catch(e => {
           // Some browsers block autoplay
