@@ -10,7 +10,8 @@
     "upload-images": "node scripts/upload-images.mjs",
     "redis": "ts-node bin/redis-cli.ts",
     "check-dressing-room": "pnpx tsx bin/check-dressing-room.ts",
-    "inngest:server": "pnpm dlx inngest-cli@latest dev"
+    "inngest:server": "pnpm dlx inngest-cli@latest dev",
+    "test": "vitest run"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
@@ -46,12 +47,17 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.3.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^4.4.1",
     "eslint": "^9",
     "eslint-config-next": "15.3.1",
+    "jsdom": "^26.1.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.1.3"
   }
 }
