@@ -10,7 +10,7 @@ if (isDev) {
 
 // Create a client with your Inngest credentials
 export const inngest = new Inngest({
-  id: 'assured-scraper',
+  id: 'sanne-app',
   // Enable dev mode for better logging
   dev: true,
   // Always pass the event key (working in both dev and prod)
